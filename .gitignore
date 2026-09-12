@@ -1,0 +1,10 @@
+.idea/
+.gradle/
+.vscode/
+.kotlin/
+
+build/
+run/
+
+docs/
+libraries/

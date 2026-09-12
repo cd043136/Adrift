@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "adrift",
+  "version": "${version}",
+  "name": "Adrift",
+  "description": "Rift addon for Odin",
+  "authors": [],
+  "contact": {},
+  "license": "BSD-3-Clause",
+  "icon": "assets/adrift/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "dev.cd.adrift.Adrift"
+      }
+    ]
+  },
+  "mixins": [
+    "adrift.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": ">=${fabric_api_version}",
+    "minecraft": "~${minecraft_version}",
+    "fabric-language-kotlin": ">=${fabric_kotlin_version}",
+    "odin": "*"
+  }
+}
