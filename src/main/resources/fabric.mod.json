@@ -23,8 +23,9 @@
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": ">=${fabric_api_version}",
-    "minecraft": "~${minecraft_version}",
+    "minecraft": "${minecraft_version_range}",
+    "java": ">=25",
     "fabric-language-kotlin": ">=${fabric_kotlin_version}",
-    "odin": "*"
+    "odin": ">=0.3.2"
   }
 }
