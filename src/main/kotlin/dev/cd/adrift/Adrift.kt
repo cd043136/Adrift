@@ -4,7 +4,9 @@ import com.odtheking.odin.config.ModuleConfig
 import com.odtheking.odin.events.core.EventBus
 import com.odtheking.odin.features.ModuleManager
 import dev.cd.adrift.commands.adriftCommand
+import dev.cd.adrift.features.impl.rift.VampireHelper
 import dev.cd.adrift.features.impl.skyblock.TestModule
+import dev.cd.adrift.utils.SlayerUtils
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 
@@ -19,9 +21,9 @@ object Adrift : ClientModInitializer {
         }
 
         // Register objects to event bus by adding to the list
-        listOf(this).forEach { EventBus.subscribe(it) }
+        listOf(this, SlayerUtils).forEach { EventBus.subscribe(it) }
 
         // Register modules by adding to the list
-        ModuleManager.registerModules(ModuleConfig("Adrift.json"), TestModule)
+        ModuleManager.registerModules(ModuleConfig("Adrift.json"), TestModule, VampireHelper)
     }
 }
