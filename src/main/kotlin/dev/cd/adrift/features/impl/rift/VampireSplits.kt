@@ -29,7 +29,7 @@ object VampireSplits : Module(
     private val sendSplits by BooleanSetting(
         "Send Splits",
         default = true,
-        desc = "Chat the final summary on kill."
+        desc = "Send time to kill to party chat."
     )
     private val damageColor by ColorSetting(
         "Damage Colour",
