@@ -12,6 +12,11 @@
     "requireAnnotations": true
   },
   "client": [
-    "MinecraftMixin"
+    "MinecraftMixin",
+    "BossHighlightEntityMixin",
+    "BossHighlightLevelAccessor",
+    "BossHighlightLivingMixin",
+    "BossHighlightOutlineMixin",
+    "BossHighlightSolidMixin"
   ]
 }

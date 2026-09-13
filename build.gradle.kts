@@ -29,7 +29,7 @@ dependencies {
     implementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
 
     runtimeOnly("me.djtheredstoner:DevAuth-fabric:${property("devauth_version")}")
-    compileOnly("com.odtheking:Odin:${property("odin_version")}@jar")
+    implementation("com.odtheking:Odin:${property("odin_version")}@jar")
 
     implementation("com.github.stivais:Commodore:${property("commodore_version")}")
 
