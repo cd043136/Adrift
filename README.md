@@ -2,6 +2,8 @@
 
 Odin addon focused mainly on Rift & vampire slayer features
 
+> Requires [Odin](https://modrinth.com/mod/odin) 
+
 ## Features
 
 <details>
