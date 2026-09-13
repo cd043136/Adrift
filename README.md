@@ -59,3 +59,8 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 
 ## TODO
 - Add images to README
+- Clotgoyles
+  - Custom rendering
+  - Ground skull alert/indicator
+  - Nearby indicator
+- Damage counter?
