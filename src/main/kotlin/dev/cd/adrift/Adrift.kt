@@ -6,6 +6,7 @@ import com.odtheking.odin.features.ModuleManager
 import dev.cd.adrift.commands.adriftCommand
 import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.HealthWarning
+import dev.cd.adrift.features.impl.rift.SlayerDrops
 import dev.cd.adrift.features.impl.rift.VampireHelper
 import dev.cd.adrift.features.impl.rift.VampireSplits
 import dev.cd.adrift.features.impl.skyblock.TestModule
@@ -27,6 +28,6 @@ object Adrift : ClientModInitializer {
         listOf(this, SlayerUtils).forEach { EventBus.subscribe(it) }
 
         // Register modules by adding to the list
-        ModuleManager.registerModules(ModuleConfig("Adrift.json"), TestModule, VampireHelper, HealthWarning, AnnounceMania, VampireSplits)
+        ModuleManager.registerModules(ModuleConfig("Adrift.json"), TestModule, VampireHelper, HealthWarning, AnnounceMania, VampireSplits, SlayerDrops)
     }
 }
