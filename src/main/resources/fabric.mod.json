@@ -26,6 +26,6 @@
     "minecraft": "${minecraft_version_range}",
     "java": ">=25",
     "fabric-language-kotlin": ">=${fabric_kotlin_version}",
-    "odin": ">=0.3.2"
+    "odin": ">=${odin_version}"
   }
 }
