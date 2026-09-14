@@ -20,7 +20,7 @@ import java.util.function.Function
  * itself is untextured.
  * `AFFECTS_OUTLINE` keeps the vanilla second pass to the outline target,
  * which draws the opaque glow border (depth-tested via copied scene depth,
- * see BossHighlightOutlineMixin).
+ * see OutlineBufferSourceMixin).
  */
 object BossHighlightTypes {
     private val FILL_PIPELINE: RenderPipeline = RenderPipeline.builder()

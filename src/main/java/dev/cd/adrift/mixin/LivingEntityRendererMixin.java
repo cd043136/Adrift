@@ -29,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * chain runs at all.)
  */
 @Mixin(LivingEntityRenderer.class)
-public abstract class BossHighlightLivingMixin {
+public abstract class LivingEntityRendererMixin {
 
     @Shadow
     protected abstract void setupRotations(LivingEntityRenderState state, PoseStack poseStack, float bodyRot, float entityScale);

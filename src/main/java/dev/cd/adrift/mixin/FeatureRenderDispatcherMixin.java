@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * occlude glow even though entities are not in the copied depth yet.
  */
 @Mixin(FeatureRenderDispatcher.class)
-public abstract class BossHighlightSolidMixin {
+public abstract class FeatureRenderDispatcherMixin {
 
     @Inject(method = "renderSolidFeatures", at = @At("HEAD"))
     private void adrift$seedOutlineDepth(CallbackInfo ci) {

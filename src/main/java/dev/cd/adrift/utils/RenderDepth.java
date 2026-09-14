@@ -3,7 +3,7 @@ package dev.cd.adrift.utils;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.cd.adrift.features.impl.rift.BossHighlight;
-import dev.cd.adrift.mixin.BossHighlightLevelAccessor;
+import dev.cd.adrift.mixin.LevelRendererMixin;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -24,7 +24,7 @@ public final class RenderDepth {
         if (!RenderSystem.isOnRenderThread()) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return false;
-        RenderTarget outline = ((BossHighlightLevelAccessor) mc.levelRenderer).adrift$getEntityOutlineTarget();
+        RenderTarget outline = ((LevelRendererMixin) mc.levelRenderer).adrift$getEntityOutlineTarget();
         RenderTarget main = mc.getMainRenderTarget();
         if (outline == null || main == null) return false;
         if (outline.width <= 0 || outline.height <= 0) return false;

@@ -13,10 +13,10 @@
   },
   "client": [
     "MinecraftMixin",
-    "BossHighlightEntityMixin",
-    "BossHighlightLevelAccessor",
-    "BossHighlightLivingMixin",
-    "BossHighlightOutlineMixin",
-    "BossHighlightSolidMixin"
+    "EntityRendererMixin",
+    "LevelRendererMixin",
+    "LivingEntityRendererMixin",
+    "OutlineBufferSourceMixin",
+    "FeatureRenderDispatcherMixin"
   ]
 }

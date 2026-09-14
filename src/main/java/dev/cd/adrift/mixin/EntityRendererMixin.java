@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * so ours wins.
  */
 @Mixin(EntityRenderer.class)
-public abstract class BossHighlightEntityMixin {
+public abstract class EntityRendererMixin {
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void adrift$forceOutline(Entity entity, EntityRenderState state, float partialTicks, CallbackInfo ci) {
