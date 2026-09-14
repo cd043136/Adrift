@@ -8,7 +8,6 @@ import com.odtheking.odin.events.RenderEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.Color
-import com.odtheking.odin.utils.Colors
 import com.odtheking.odin.utils.render.drawStyledBox
 import com.odtheking.odin.utils.renderBoundingBox
 import dev.cd.adrift.utils.Category
@@ -21,7 +20,6 @@ object BossHighlight : Module(
     category = Category.RIFT,
     description = "Dynamic boss highlight"
 ) {
-    private const val FILL_ALPHA = 0x20
     private const val ATTACK_RANGE = 3.0
 
     private val onOtherBoss by BooleanSetting(
@@ -40,16 +38,16 @@ object BossHighlight : Module(
         options = listOf("Filled", "Box", "Filled Box", "Outline", "Custom"),
         desc = ""
     )
-    // cols
+    // todo: steak colour
     private val defaultColour by ColorSetting(
         "Default colour",
-        default = Colors.WHITE,
+        default = Color("ffffff20"),
         allowAlpha = true,
         desc = ""
     )
     private val attackableColour by ColorSetting(
         "Nearby colour",
-        default = Colors.MINECRAFT_RED,
+        default = Color("ff555520"),
         allowAlpha = true,
         desc = "Colour when attackable"
     ).withDependency { dynamicColour }
@@ -89,7 +87,7 @@ object BossHighlight : Module(
     }
 
     @JvmStatic
-    fun fillColorFor(entity: Entity): Int = ARGB.color(FILL_ALPHA, baseColorFor(entity).rgba)
+    fun fillColorFor(entity: Entity): Int = baseColorFor(entity).rgba
 
     @JvmStatic
     fun glowColorFor(entity: Entity): Int = ARGB.opaque(baseColorFor(entity).rgba)
