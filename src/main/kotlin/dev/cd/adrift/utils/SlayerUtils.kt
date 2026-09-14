@@ -83,7 +83,7 @@ object SlayerUtils {
         if (entity !is RemotePlayer || entity.plainTextName != "Bloodfiend " || entity == boss) return // hypixel,why is there a space???
 
         val s = level.getEntity(entity.id + 1) ?: return
-        if (s is ArmorStand && s.plainTextName.contains("Bloodfiend V")) {
+        if (s is ArmorStand && s.plainTextName.contains("Bloodfiend ")) {
             val spawnedBy = level.getEntity(entity.id + 3)
                 ?.plainTextName
                 .takeIf {
