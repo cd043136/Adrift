@@ -11,15 +11,7 @@ repositories {
     mavenCentral()
     maven("https://jitpack.io")
     maven("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1")
-    ivy {
-        url = uri("https://github.com/odtheking/Odin/releases/download")
-        patternLayout {
-            artifact("[revision]/[artifact]-[revision].[ext]")
-        }
-        metadataSources {
-            artifact()
-        }
-    }
+    maven("https://api.modrinth.com/maven")
 }
 
 dependencies {
@@ -29,7 +21,7 @@ dependencies {
     implementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
 
     runtimeOnly("me.djtheredstoner:DevAuth-fabric:${property("devauth_version")}")
-    implementation("com.odtheking:Odin:${property("odin_version")}@jar")
+    implementation("maven.modrinth:odin:${property("odin_version")}")
 
     implementation("com.github.stivais:Commodore:${property("commodore_version")}")
 

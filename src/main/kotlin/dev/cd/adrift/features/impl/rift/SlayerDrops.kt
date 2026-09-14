@@ -1,7 +1,7 @@
 package dev.cd.adrift.features.impl.rift
 
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
-import com.odtheking.odin.events.ChatMessageEvent
+import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.modMessage
@@ -57,7 +57,7 @@ object SlayerDrops : Module(
     }
 
     init {
-        on<ChatMessageEvent> {
+        on<MessageEvent.Chat> {
             if (LocationUtils.currentArea != Island.Rift) return@on
             if (!bundleRename && !copyDrops) return@on
 
@@ -67,7 +67,7 @@ object SlayerDrops : Module(
 
             var displayRenamed = false
             if (bundleRename && ValuableDrop.BUNDLE in matched &&
-                isSystemLine(value, ValuableDrop.BUNDLE.plain)
+                isSystemLine(message, ValuableDrop.BUNDLE.plain)
             ) {
                 val rebuilt = Component.empty()
                 pieces.forEach { piece ->
@@ -79,8 +79,8 @@ object SlayerDrops : Module(
                 displayRenamed = true
             }
 
-            if (copyDrops && isSystemLine(value, DROP)) {
-                var text = value
+            if (copyDrops && isSystemLine(message, DROP)) {
+                var text = message
                 // Mirror chat: only use the renamed form if we actually renamed the display.
                 if (ValuableDrop.BUNDLE in matched && displayRenamed)
                     text = text.replace(ValuableDrop.BUNDLE.plain, ValuableDrop.BUNDLE.renameTo!!)

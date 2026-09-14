@@ -3,7 +3,7 @@ package dev.cd.adrift.features.impl.rift
 import com.odtheking.odin.clickgui.settings.impl.ActionSetting
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
-import com.odtheking.odin.events.ChatMessageEvent
+import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.LevelEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
@@ -148,10 +148,10 @@ object VampireSplits : Module(
             if (splits.lastOrNull()?.running == true) splits.last().ticks += 1
         }
 
-        on<ChatMessageEvent> {
+        on<MessageEvent.Chat> {
             if (!active && !pendingOutcome) return@on
 
-            val lines = value.split("\n").map { it.trim() }
+            val lines = message.split("\n").map { it.trim() }
             when {
                 lines.any { it == QUEST_COMPLETE } -> {
                     pendingOutcome = false
