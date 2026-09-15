@@ -12,6 +12,7 @@ import com.odtheking.odin.utils.render.drawStyledBox
 import com.odtheking.odin.utils.renderBoundingBox
 import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.SlayerUtils
+import net.minecraft.client.player.RemotePlayer
 import net.minecraft.util.ARGB
 import net.minecraft.world.entity.Entity
 
@@ -27,10 +28,15 @@ object BossHighlight : Module(
         default = false,
         desc = "Enable highlight on other bosses"
     )
-    private val dynamicColour by BooleanSetting(
+    private val dynamicColouring by BooleanSetting(
         "Dynamic colour",
         default = false,
         desc = "Change colour when within attack range"
+    )
+    private val steakColouring by BooleanSetting(
+        "Steak colour",
+        default = false,
+        desc = "Change colour when it's steakable, overrides Dynamic colour"
     )
     private val mode by SelectorSetting(
         name = "Render Mode",
@@ -38,19 +44,26 @@ object BossHighlight : Module(
         options = listOf("Filled", "Box", "Filled Box", "Outline", "Custom"),
         desc = ""
     )
+
     // todo: steak colour
     private val defaultColour by ColorSetting(
         "Default colour",
-        default = Color("ffffff20"),
+        default = Color("ffffff40"),
         allowAlpha = true,
         desc = ""
     )
     private val attackableColour by ColorSetting(
         "Nearby colour",
-        default = Color("ff555520"),
+        default = Color("ff555540"),
         allowAlpha = true,
         desc = "Colour when attackable"
-    ).withDependency { dynamicColour }
+    ).withDependency { dynamicColouring }
+    private val steakableColour by ColorSetting(
+        "Steakable colour",
+        default = Color("59110140"),
+        allowAlpha = true,
+        desc = "Colour when steakable"
+    ).withDependency { steakColouring }
 
     init {
         on<RenderEvent.Extract> {
@@ -61,7 +74,10 @@ object BossHighlight : Module(
 
     fun targets(): List<Entity> = buildList {
         SlayerUtils.boss?.takeIf { it.isAlive }?.let(::add)
-        if (onOtherBoss) SlayerUtils.lootshareBoss?.takeIf { it.isAlive }?.let(::add)
+        if (onOtherBoss) SlayerUtils.lootshareBoss
+            ?.takeIf {
+                it.isAlive && it !== SlayerUtils.boss }
+            ?.let(::add)
     }
 
     @JvmStatic
@@ -80,15 +96,17 @@ object BossHighlight : Module(
     }
 
     @JvmStatic
-    fun baseColorFor(entity: Entity): Color {
-        if (!dynamicColour) return defaultColour
+    fun baseColorFor(boss: Entity): Color {
+        if (!dynamicColouring && !steakColouring) return defaultColour
         val player = mc.player ?: return defaultColour
-        return if (player.distanceTo(entity) <= ATTACK_RANGE) attackableColour else defaultColour
+
+        if (steakColouring && boss is RemotePlayer && (boss.health / boss.maxHealth <= 0.2f)) return steakableColour
+        return if (player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
     }
 
     @JvmStatic
-    fun fillColorFor(entity: Entity): Int = baseColorFor(entity).rgba
+    fun fillColorFor(boss: Entity): Int = baseColorFor(boss).rgba
 
     @JvmStatic
-    fun glowColorFor(entity: Entity): Int = ARGB.opaque(baseColorFor(entity).rgba)
+    fun glowColorFor(boss: Entity): Int = ARGB.opaque(baseColorFor(boss).rgba)
 }

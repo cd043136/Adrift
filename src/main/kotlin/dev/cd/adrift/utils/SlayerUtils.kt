@@ -16,9 +16,9 @@ import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.level.Level
 
 object SlayerUtils {
-    var boss: Entity? = null
+    var boss: RemotePlayer? = null
     var timer: ArmorStand? = null
-    var lootshareBoss: Entity? = null
+    var lootshareBoss: RemotePlayer? = null
     // TODO: new slayer system doesn't have `Spawned by:` thingy,
     //  maybe rely purely on attacks?
     init {
@@ -58,8 +58,8 @@ object SlayerUtils {
                     // val e2 = world.getEntity(it.id - 3)?.plainTextName ?: "NullName"
                     // val e1 = world.getEntity(it.id - 3)?.plainTextName ?: "NullName"
 
-                    val b = world.getEntity(it.id - 3) ?: return@forEach
-                    if (b !is ArmorStand && b.isAlive && timerS is ArmorStand && timerS.plainTextName.contains(":")) {
+                    val b = world.getEntity(it.id - 3) as? RemotePlayer ?: return@forEach
+                    if ( b.isAlive && timerS is ArmorStand && timerS.plainTextName.contains(":")) {
                         boss = b
                         timer = timerS
                         SlayerEvent.Spawn(b).postAndCatch()
@@ -80,7 +80,7 @@ object SlayerUtils {
 
     private fun onAttack(level: Level, entity: Entity) {
         if (LocationUtils.currentArea != Island.Rift || lootshareBoss != null) return // 1 boss max, maybe figure out a better system later
-        if (entity !is RemotePlayer || entity.plainTextName != "Bloodfiend " || entity == boss) return // hypixel,why is there a space???
+        if (entity !is RemotePlayer || entity.plainTextName != "Bloodfiend " || entity === boss) return // hypixel,why is there a space???
 
         val s = level.getEntity(entity.id + 1) ?: return
         if (s is ArmorStand && s.plainTextName.contains("Bloodfiend ")) {
