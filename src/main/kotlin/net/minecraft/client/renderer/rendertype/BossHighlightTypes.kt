@@ -15,9 +15,9 @@ import java.util.function.Function
  * Solid-fill render type for BossHighlight's Custom mode.
  * Flat unlit vertex colour (alpha respected) with translucent blending to
  * `main`, depth tested like a normal translucent entity so walls occlude it.
- * The skin texture is bound but only sampled by the vanilla outline pass
- * (derived from the first texture binding) for alpha cutout; the fill pass
- * itself is untextured.
+ * Samples the skin texture for alpha cutout only (`== 0.0`, matching vanilla
+ * `rendertype_outline`) so fill and glow rasterize the same silhouette; the
+ * output itself is untextured flat colour.
  * `AFFECTS_OUTLINE` keeps the vanilla second pass to the outline target,
  * which draws the opaque glow border (depth-tested via copied scene depth,
  * see OutlineBufferSourceMixin).
@@ -26,13 +26,14 @@ object BossHighlightTypes {
     private val FILL_PIPELINE: RenderPipeline = RenderPipeline.builder()
         .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
         .withUniform("Projection", UniformType.UNIFORM_BUFFER)
-        .withVertexShader("core/position_color")
-        .withFragmentShader("core/position_color")
-        .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
+        .withVertexShader(Identifier.fromNamespaceAndPath("adrift", "core/bosshighlight_fill"))
+        .withFragmentShader(Identifier.fromNamespaceAndPath("adrift", "core/bosshighlight_fill"))
+        .withSampler("Sampler0")
+        .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
         .withColorTargetState(ColorTargetState(BlendFunction.TRANSLUCENT))
         .withDepthStencilState(DepthStencilState.DEFAULT)
         .withCull(false)
-        .withLocation("pipeline/bosshighlight_fill")
+        .withLocation(Identifier.fromNamespaceAndPath("adrift", "pipeline/bosshighlight_fill"))
         .build()
 
     /**
