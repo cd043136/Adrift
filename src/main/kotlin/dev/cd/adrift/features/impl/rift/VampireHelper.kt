@@ -21,6 +21,8 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.phys.Vec3
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.math.sqrt
 
 object VampireHelper : Module(
@@ -51,7 +53,7 @@ object VampireHelper : Module(
     )
 
     const val ICHOR_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTYxNTg4ODAwMDU1MywKICAicHJvZmlsZUlkIiA6ICI5ZDIyZGRhOTVmZGI0MjFmOGZhNjAzNTI1YThkZmE4ZCIsCiAgInByb2ZpbGVOYW1lIiA6ICJTYWZlRHJpZnQ0OCIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9jMDM0MDkyM2E2ZGU0ODI1YTE3NjgxM2QxMzM1MDNlZmYxODZkYjA4OTZlMzJiNjcwNDkyOGMyYTJiZjY4NDIyIgogICAgfQogIH0KfQ=="
-    private val ichors: MutableMap<Entity, MutableSet<ArmorStand>> = mutableMapOf()
+    private val ichors: ConcurrentHashMap<Entity, CopyOnWriteArraySet<ArmorStand>> = ConcurrentHashMap()
 
     init {
         // TODO: check ichor spawn timing based on armourstand timer (ICHOR 0.1s etc)
@@ -136,7 +138,7 @@ object VampireHelper : Module(
             val its = entity.getItemBySlot(EquipmentSlot.HEAD)
             if (its.texture != ICHOR_TEXTURE) return@schedule
 
-            ichors.getOrPut(boss) { mutableSetOf() }.add(entity)
+            ichors.computeIfAbsent(boss) { CopyOnWriteArraySet() }.add(entity)
         }
     }
 

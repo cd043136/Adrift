@@ -20,6 +20,7 @@ import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.SlayerUtils
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
+import java.util.concurrent.CopyOnWriteArrayList
 
 object VampireSplits : Module(
     "Vampire Splits",
@@ -75,7 +76,8 @@ object VampireSplits : Module(
     private const val QUEST_COMPLETE = "SLAYER QUEST COMPLETE!"
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
 
-    private val splits = mutableListOf<Split>()
+    // TODO: check other crash source if it happens again
+    private val splits = CopyOnWriteArrayList<Split>()
     private var damageCount = 0
     private var maniaCount = 0
     private var hasMania = false
