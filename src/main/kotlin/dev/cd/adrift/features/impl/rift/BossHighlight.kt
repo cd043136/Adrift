@@ -101,7 +101,7 @@ object BossHighlight : Module(
         val player = mc.player ?: return defaultColour
 
         if (steakColouring && boss is RemotePlayer && (boss.health / boss.maxHealth <= 0.2f)) return steakableColour
-        return if (player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
+        return if (dynamicColouring && player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
     }
 
     @JvmStatic
