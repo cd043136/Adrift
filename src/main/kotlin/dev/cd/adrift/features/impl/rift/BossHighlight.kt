@@ -22,6 +22,7 @@ object BossHighlight : Module(
     description = "Dynamic boss highlight"
 ) {
     private const val ATTACK_RANGE = 3.0
+    private const val STEAK_SYMBOL = "҉"
 
     private val onOtherBoss by BooleanSetting(
         "Highlight other boss",
@@ -45,7 +46,6 @@ object BossHighlight : Module(
         desc = ""
     )
 
-    // todo: steak colour
     private val defaultColour by ColorSetting(
         "Default colour",
         default = Color("ffffff40"),
@@ -100,7 +100,7 @@ object BossHighlight : Module(
         if (!dynamicColouring && !steakColouring) return defaultColour
         val player = mc.player ?: return defaultColour
 
-        if (steakColouring && boss is RemotePlayer && (boss.health / boss.maxHealth <= 0.2f)) return steakableColour
+        if (steakColouring && boss is RemotePlayer && boss.isSteakable()) return steakableColour
         return if (dynamicColouring && player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
     }
 
@@ -109,4 +109,9 @@ object BossHighlight : Module(
 
     @JvmStatic
     fun glowColorFor(boss: Entity): Int = ARGB.opaque(baseColorFor(boss).rgba)
+
+    private fun RemotePlayer.isSteakable(): Boolean {
+        val bossNametag = this.level().getEntity(this.id + 1)
+        return bossNametag?.plainTextName?.contains(STEAK_SYMBOL) ?: false
+    }
 }
