@@ -28,9 +28,14 @@ object VampireSplits : Module(
     description = "Damage & mania splits for boss"
 ) {
     private val sendSplits by BooleanSetting(
-        "Send Splits",
-        default = true,
+        "Send TTK",
+        default = false,
         desc = "Send time to kill to party chat."
+    )
+    private val printSplits by BooleanSetting(
+        "Print Splits",
+        default = false,
+        desc = "Print splits in chat after kill"
     )
     private val damageColor by ColorSetting(
         "Damage Colour",
@@ -201,7 +206,7 @@ object VampireSplits : Module(
                     .withStyle(style)
             )
         }
-        modMessage(message, prefix = "")
+        if (printSplits) modMessage(message, prefix = "")
 
         if (sendSplits) sendCommand("pc Boss took $killStr to kill")
     }
