@@ -1,5 +1,6 @@
 package dev.cd.adrift.features.impl.rift
 
+import com.odtheking.odin.clickgui.settings.impl.NumberSetting
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.events.core.onReceive
@@ -28,6 +29,15 @@ object TwinclawsFix : Module(
         Pair(0.3f, 2.7936509f),
         Pair(0.2f, 2.8888888f),
         Pair(0.1f, 3.0f),
+    )
+
+    private val volume by NumberSetting(
+        "Volume",
+        default = 1.0,
+        min = 0.5,
+        max = 2.0,
+        increment = 0.1,
+        desc = "Sound volume"
     )
 
     private var prevDisplayed: Float? = null
@@ -67,15 +77,18 @@ object TwinclawsFix : Module(
 
             for ((threshold, pitch) in twinclawSounds) {
                 if (threshold in displayed..<prev && played.add(threshold)) {
-                    // todo: maybe adjustable volume?
-                    // vol clamp bypass by playing both at the same tick
                     mc.execute {
+                        val vol = volume.toFloat()
+
                         mc.soundManager.play(
-                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 1.0f)
+                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol.coerceAtMost(1.0f))
                         )
-                        mc.soundManager.play(
-                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 0.5f)
-                        )
+
+                        if (vol > 1.0f) {
+                            mc.soundManager.play(
+                                SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol - 1.0f)
+                            )
+                        }
                     }
                 }
             }
