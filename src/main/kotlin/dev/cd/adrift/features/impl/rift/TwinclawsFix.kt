@@ -69,12 +69,14 @@ object TwinclawsFix : Module(
                 if (threshold in displayed..<prev && played.add(threshold)) {
                     // todo: maybe adjustable volume?
                     // vol clamp bypass by playing both at the same tick
-                    mc.soundManager.play(
-                        SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 1.0f)
-                    )
-                    mc.soundManager.play(
-                        SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 0.5f)
-                    )
+                    mc.execute {
+                        mc.soundManager.play(
+                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 1.0f)
+                        )
+                        mc.soundManager.play(
+                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, 0.5f)
+                        )
+                    }
                 }
             }
             prevDisplayed = displayed
