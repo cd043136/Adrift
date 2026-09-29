@@ -8,6 +8,7 @@ import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.BeaconSoul
 import dev.cd.adrift.features.impl.rift.BossHighlight
 import dev.cd.adrift.features.impl.rift.HealthWarning
+import dev.cd.adrift.features.impl.rift.ManiaHelper
 import dev.cd.adrift.features.impl.rift.SlayerDrops
 import dev.cd.adrift.features.impl.rift.TwinclawsFix
 import dev.cd.adrift.features.impl.rift.VampireHelper
@@ -32,6 +33,7 @@ object Adrift : ClientModInitializer {
         // Register modules by adding to the list
         ModuleManager.registerModules(ModuleConfig("Adrift.json"), VampireHelper, HealthWarning, AnnounceMania, VampireSplits, SlayerDrops, BossHighlight,
             BeaconSoul,
-            TwinclawsFix)
+            TwinclawsFix,
+            ManiaHelper)
     }
 }

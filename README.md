@@ -30,6 +30,14 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 </details>
 
 <details>
+<summary>Mania Helper</summary>
+
+### Mania Helper
+- Renders your mania pattern fully, fixes a bug where some blocks do not change colours during mania
+- Also prevents you from dying in mania if someone's griefing your boss
+</details>
+
+<details>
 <summary>Slayer Drops</summary>
 
 ### Slayer Drops
