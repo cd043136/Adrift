@@ -196,6 +196,8 @@ internal class ManiaSession(
     private val coals = IntArrayList()
     private val greenHist = IntArray(BAND_COUNT)
     private val redHist = IntArray(BAND_COUNT)
+    private val formulaGreenHist = IntArray(BAND_COUNT)
+    private val formulaRedHist = IntArray(BAND_COUNT)
     private val seenStamp = IntArray(offsetCount)
     private val seenType = arrayOfNulls<ManiaBlock>(offsetCount)
     private val conflictStamp = IntArray(offsetCount)
@@ -528,6 +530,15 @@ internal class ManiaSession(
         if (!continuation && margin * 2 < total * MIN_MARGIN)
             return outcome(false) { "ignored (ambiguous ring, $pickedConsistent vs ${pickedConsistent - margin})" }
 
+        if (total >= MIN_CELLS) {
+            fillFormulaHistograms(greens, formulaGreenHist)
+            fillFormulaHistograms(reds, formulaRedHist)
+            val formulaRedTotal = ringSum(formulaRedHist)
+            val formulaConsistent = formulaGreenHist[ring] + formulaRedTotal - formulaRedHist[ring]
+            if (formulaConsistent < total * MIN_FORMULA_CONSISTENCY)
+                return outcome(false) { "ignored (formula disagrees $formulaConsistent/$total for ring $ring)" }
+        }
+
         if (!continuation) {
             if (!replacing) cycleIndex++
             greenRing = ring
@@ -535,7 +546,7 @@ internal class ManiaSession(
             phasePredicted = false
             cycleStartTick = tick
             lastRedCount = 0
-            if (referenceCount == 0) referenceCount = total
+            if (total > referenceCount) referenceCount = total
         }
         lastRedCount += reds.size
 
@@ -627,7 +638,12 @@ internal class ManiaSession(
             val g = gridOf(i)
             val o = offsetOrbit[i]
             var band = resolve(greenCounts, redCounts, g * 5, coalCounts[g], formula)
-            if (band == UNKNOWN) band = resolve(orbitGreen, orbitRed, o * 5, orbitCoal[o], formula)
+            if (band == UNKNOWN) {
+                band = resolve(orbitGreen, orbitRed, o * 5, orbitCoal[o], formula)
+            } else if (band != formula) {
+                val orbitBand = resolve(orbitGreen, orbitRed, o * 5, orbitCoal[o], formula)
+                if (orbitBand != band && cellObservations(g) < SOLO_OVERRIDE_OBS) band = UNKNOWN
+            }
             if (band == UNKNOWN) band = formula
             columnBand[i] = band
             if (band != formula) overrides++
@@ -651,7 +667,7 @@ internal class ManiaSession(
             totalGreen += green[base + k]
             totalRed += red[base + k]
         }
-        if (totalGreen == 0 && totalRed == 0 && coal == 0) return UNKNOWN
+        if (totalGreen + totalRed + coal < MIN_OBSERVATIONS) return UNKNOWN
 
         var best = UNKNOWN
         var bestSupport = Int.MIN_VALUE
@@ -681,6 +697,18 @@ internal class ManiaSession(
     private fun fillHistograms(cells: IntArrayList, hist: IntArray) {
         hist.fill(0)
         for (j in 0 until cells.size) hist[columnBand[cells.getInt(j)]]++
+    }
+
+    private fun fillFormulaHistograms(cells: IntArrayList, hist: IntArray) {
+        hist.fill(0)
+        for (j in 0 until cells.size) hist[offsetFormula[cells.getInt(j)]]++
+    }
+
+    private fun cellObservations(grid: Int): Int {
+        var total = coalCounts[grid]
+        val base = grid * 5
+        for (k in 1..4) total += greenCounts[base + k] + redCounts[base + k]
+        return total
     }
 
     private fun ringSum(hist: IntArray) = hist[1] + hist[2] + hist[3] + hist[4]
@@ -720,7 +748,10 @@ internal class ManiaSession(
         const val FAR_FIT_CONSISTENCY = 0.9
         const val FAR_FIT_WINS = 2
         const val MIN_CONSISTENCY = 0.8
-        const val OVERRIDE_MARGIN = 3
+        const val MIN_FORMULA_CONSISTENCY = 0.6
+        const val MIN_OBSERVATIONS = 4
+        const val SOLO_OVERRIDE_OBS = 6
+        const val OVERRIDE_MARGIN = 5
         const val COAL_WEIGHT = 3
         const val MIN_MARGIN = 0.15
         const val MIN_TERRACOTTA_COVERAGE = 0.4
