@@ -47,7 +47,7 @@ object SlayerUtils {
             if (LocationUtils.currentArea != Island.Rift) return@on
 
             if (message.matches(SPAWN_REGEX)) {
-                if (boss?.isAlive) return@on // someone else's spawn, ours is already bound
+                if (boss?.isAlive == true) return@on // someone else's spawn, ours is already bound
                 awaitingSpawnUntil = System.currentTimeMillis() + CANDIDATE_WINDOW_MS
                 tryBind()
             }
