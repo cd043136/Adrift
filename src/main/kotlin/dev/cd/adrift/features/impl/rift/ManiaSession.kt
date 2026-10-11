@@ -5,6 +5,8 @@ import dev.cd.adrift.features.impl.rift.ManiaGeometry.BORDER
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.CAPTURE_RADIUS
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.CORE
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.FIT_RANGE
+import dev.cd.adrift.features.impl.rift.ManiaGeometry.FOREIGN_RADIUS
+import dev.cd.adrift.features.impl.rift.ManiaGeometry.FOREIGN_RADIUS_SQ
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.ORBIT_COUNT
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.OUTSIDE
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.PATTERN_RADIUS_SQ
@@ -61,7 +63,11 @@ internal object ManiaGeometry {
     const val PATTERN_RADIUS = 15
     const val PATTERN_RADIUS_SQ = PATTERN_RADIUS * PATTERN_RADIUS
     const val FIT_RANGE = 4
-    const val CAPTURE_RADIUS = PATTERN_RADIUS + FIT_RANGE
+    /** Our own blocks never reach this far from the centre (border plus a block of fit error), foreign ones do. */
+    const val FOREIGN_RADIUS = PATTERN_RADIUS + 1
+    const val FOREIGN_RADIUS_SQ = FOREIGN_RADIUS * FOREIGN_RADIUS
+    const val FOREIGN_MARGIN = 4
+    const val CAPTURE_RADIUS = FOREIGN_RADIUS + FIT_RANGE + FOREIGN_MARGIN
     const val CAPTURE_RADIUS_SQ = CAPTURE_RADIUS * CAPTURE_RADIUS
     const val ORBIT_COUNT = (PATTERN_RADIUS + 1) * (PATTERN_RADIUS + 1)
 
@@ -201,6 +207,8 @@ internal class ManiaSession(
     private val conflictStamp = IntArray(offsetCount)
     private val batchOffsets = IntArrayList()
     private var batchStamp = 0
+    private val foreignCounts = IntArray(GROUP_NONE + 1)
+    private val filtered = ArrayList<ManiaUpdate>()
 
     /** Debug description of the last terracotta/stage decision, only set while logging. */
     private var lastOutcome = ""
@@ -232,7 +240,26 @@ internal class ManiaSession(
     }
 
     /** @return false if the batch reverted the pattern and the session should end. */
-    fun processBatch(tick: Long, batch: List<ManiaUpdate>, synthetic: Boolean): Boolean {
+    fun processBatch(tick: Long, updates: List<ManiaUpdate>, synthetic: Boolean): Boolean {
+        if (!synthetic) for (u in updates) if (u.type != ManiaBlock.NONE) packetsSeen++
+        if (log.enabled) for (u in updates) log.file("B $tick ${u.x} ${u.y} ${u.z} ${u.type.symbol}")
+
+        var batch = updates
+        var fitted = false
+        if (locked) {
+            countForeign(updates)
+            // Locked onto a nearby foreign pattern in the first window, our own batch looks foreign: let it re-lock.
+            if (foreignCounts[GROUP_TERRACOTTA] >= FOREIGN_MIN_CELLS && refitsAfterLock < MAX_REFITS &&
+                cycleIndex <= 0 && inFirstCycleWindow()
+            ) {
+                val version = centreVersion
+                fitCentre(updates)
+                fitted = true
+                if (centreVersion != version) countForeign(updates)
+            }
+            batch = dropForeign(tick, updates)
+        }
+
         var g = 0
         var r = 0
         var rs = 0
@@ -245,10 +272,9 @@ internal class ManiaSession(
             ManiaBlock.NONE -> Unit
         }
         val maniaCells = g + r + rs + c
-        if (!synthetic) packetsSeen += maniaCells
-        if (log.enabled) for (u in batch) log.file("B $tick ${u.x} ${u.y} ${u.z} ${u.type.symbol}")
+        if (batch.isEmpty()) return true
 
-        if (g + r > 0 && (!locked || refitsAfterLock < MAX_REFITS)) fitCentre(batch)
+        if (g + r > 0 && (!locked || refitsAfterLock < MAX_REFITS) && !fitted) fitCentre(batch)
         if (!locked) {
             if (maniaCells > 0) logBatch(tick, g, r, rs, c, batch.size - maniaCells, 0, "ignored (centre not locked)")
             return true
@@ -363,14 +389,86 @@ internal class ManiaSession(
         return inNone
     }
 
+    /**
+     * Counts updates beyond [FOREIGN_RADIUS] of the locked centre per step (terracotta, redstone, coal, revert), which
+     * can only come from another boss. Steps of different bosses can land in the same tick, so a tripped
+     * group is a mix of ours (inside) and foreign (beyond): only the beyond cells are foreign.
+     */
+    private fun countForeign(batch: List<ManiaUpdate>) {
+        foreignCounts.fill(0)
+        for (u in batch) {
+            val dx = u.x - centreX
+            val dz = u.z - centreZ
+            if (dx * dx + dz * dz > FOREIGN_RADIUS_SQ) foreignCounts[groupOf(u.type)]++
+        }
+    }
+
+    /** [batch] keeping our inside-circle cells; only beyond-r16 cells of tripped groups are dropped. */
+    private fun dropForeign(tick: Long, batch: List<ManiaUpdate>): List<ManiaUpdate> {
+        var any = false
+        for (k in 0 until GROUP_NONE) if (foreignCounts[k] >= FOREIGN_MIN_CELLS) any = true
+        if (!any) return batch
+        filtered.clear()
+        var keptInside = 0
+        for (u in batch) {
+            val group = groupOf(u.type)
+            if (group == GROUP_NONE || foreignCounts[group] < FOREIGN_MIN_CELLS) {
+                filtered += u
+                continue
+            }
+            val dx = u.x - centreX
+            val dz = u.z - centreZ
+            if (dx * dx + dz * dz <= FOREIGN_RADIUS_SQ) {
+                filtered += u
+                keptInside++
+            }
+        }
+        if (log.enabled) {
+            val dropped = (0 until GROUP_NONE).filter { foreignCounts[it] >= FOREIGN_MIN_CELLS }
+                .joinToString { "${GROUP_NAMES[it]} ${foreignCounts[it]}" }
+            log.chat("t$tick ignored foreign $dropped (cells beyond r$FOREIGN_RADIUS), ${batch.size - filtered.size} updates dropped ($keptInside inside kept)")
+        }
+        return filtered
+    }
+
+    private fun groupOf(type: ManiaBlock): Int = when (type) {
+        ManiaBlock.GREEN, ManiaBlock.RED -> GROUP_TERRACOTTA
+        ManiaBlock.REDSTONE -> GROUP_REDSTONE
+        ManiaBlock.COAL -> GROUP_COAL
+        ManiaBlock.NONE -> GROUP_NONE
+    }
+
     private fun isRevert(inNone: Int): Boolean {
         if (cycleIndex < 0 || inNone < max(MIN_REVERT_CELLS, referenceCount / 2)) return false
+        // Our revert stays inside our circle; one spilling beyond it is another boss's pattern ending.
+        if (foreignCounts[GROUP_NONE] >= FOREIGN_MIN_CELLS) return false
         // Guards against an overlapping boss reverting its own pattern on top of ours mid-mania.
         val remaining = maniaRemaining
         return remaining == null || remaining <= REVERT_WINDOW_SECONDS || cycleIndex >= MAX_CYCLES - 2
     }
 
     private fun fitCentre(batch: List<ManiaUpdate>) {
+        if (!locked && beforeFirstCycle()) {
+            if (log.enabled) log.chat("Centre fit rejected: pattern arrived before our first cycle")
+            return
+        }
+        // Each step resends the full pattern (G+R+C, G+RS+C, G+C), so greens alone cannot
+        // identify terracotta: a redstone/coal resend would otherwise lock us 25t late.
+        // RED only appears in the terracotta step, so (re)locks need RED strength.
+        var batchReds = 0
+        var batchRs = 0
+        for (u in batch) when (u.type) {
+            ManiaBlock.RED -> batchReds++
+            ManiaBlock.REDSTONE -> batchRs++
+            else -> Unit
+        }
+        if (batchReds < MIN_RED_FOR_LOCK) {
+            if (log.enabled) log.chat(
+                "Centre fit rejected: need RED for lock (reds $batchReds/${MIN_RED_FOR_LOCK}, " +
+                    "rs $batchRs looks like a resend)"
+            )
+            return
+        }
         if (locked) refitsAfterLock++
         var bestX = guessX
         var bestZ = guessZ
@@ -378,6 +476,7 @@ internal class ManiaSession(
         var bestScore = Int.MIN_VALUE
         var bestConsistent = 0
         var bestDist = Int.MAX_VALUE
+        var bestForeign = 0
         var total = 0
 
         for (ox in -FIT_RANGE..FIT_RANGE) for (oz in -FIT_RANGE..FIT_RANGE) {
@@ -387,20 +486,26 @@ internal class ManiaSession(
             redHist.fill(0)
             var coalOk = 0
             var cells = 0
+            var foreign = 0
             for (u in batch) {
                 val type = u.type
                 if (type == ManiaBlock.NONE || type == ManiaBlock.REDSTONE) continue
                 val dx = u.x - cx
                 val dz = u.z - cz
                 // Cells beyond this candidate's circle belong to someone else's pattern.
-                if (dx * dx + dz * dz > PATTERN_RADIUS_SQ) continue
-                cells++
+                val distSq = dx * dx + dz * dz
+                if (distSq > PATTERN_RADIUS_SQ) {
+                    if (distSq > FOREIGN_RADIUS_SQ && type != ManiaBlock.COAL) foreign++
+                    continue
+                }
                 val band = formulaBand(dx, dz)
+                // Coal only supports a fit: another boss's coal step can land in the same tick as our terracotta.
                 when (type) {
                     ManiaBlock.GREEN -> greenHist[band]++
                     ManiaBlock.RED -> redHist[band]++
-                    else -> if (band == CORE || band == BORDER) coalOk++
+                    else -> if (band == CORE || band == BORDER) coalOk++ else continue
                 }
+                cells++
             }
             val redRing = ringSum(redHist)
             val dist = ox * ox + oz * oz
@@ -411,6 +516,7 @@ internal class ManiaSession(
                     bestScore = score
                     bestDist = dist
                     bestConsistent = consistent
+                    bestForeign = foreign
                     total = cells
                     bestX = cx
                     bestZ = cz
@@ -421,6 +527,14 @@ internal class ManiaSession(
 
         if (total < MIN_FIT_CELLS || bestConsistent < total * MIN_FIT_CONSISTENCY) {
             if (log.enabled) log.chat("Centre fit rejected: best ($bestX, $bestZ) ring $bestRing, $bestConsistent/$total consistent")
+            return
+        }
+        // An overlapping boss landing the same tick spills cells beyond r16, but our own
+        // cells still dominate: tolerate foreign proportionally instead of hard-rejecting
+        // a strong consistent fit (e.g. 160/160 ours + 81 foreign on the true start).
+        val foreignTolerance = max(FOREIGN_MIN_CELLS, (total * FOREIGN_TOLERANCE).toInt())
+        if (bestForeign >= foreignTolerance) {
+            if (log.enabled) log.chat("Centre fit rejected: best ($bestX, $bestZ) has $bestForeign cells beyond r$FOREIGN_RADIUS (tolerance $foreignTolerance)")
             return
         }
 
@@ -459,7 +573,10 @@ internal class ManiaSession(
         }
 
         val wins = centreWins.merge(key, 1, Int::plus) ?: 1
-        if (wins > (centreWins[currentKey] ?: 0)) {
+        // Two bosses close together can both start a cycle inside the first window; ours is the one nearer our boss.
+        val closer = cycleIndex <= 0 && inFirstCycleWindow() && bossDistSq(bestX, bestZ) < bossDistSq(centreX, centreZ)
+        if (closer || wins > (centreWins[currentKey] ?: 0)) {
+            if (closer) centreWins[key] = max(wins, (centreWins[currentKey] ?: 0) + 1)
             val previous = "($centreX, $centreZ)"
             lockCentre(bestX, bestZ, reset = true)
             if (log.enabled) {
@@ -475,6 +592,19 @@ internal class ManiaSession(
         val start = startRemaining ?: return false
         val now = maniaRemaining ?: return false
         return start >= FIRST_CYCLE_REMAINING + FIRST_CYCLE_WINDOW && abs(now - FIRST_CYCLE_REMAINING) <= FIRST_CYCLE_WINDOW
+    }
+
+    private fun bossDistSq(x: Int, z: Int): Double {
+        val dx = bossX - (x + 0.5)
+        val dz = bossZ - (z + 0.5)
+        return dx * dx + dz * dz
+    }
+
+    /** True while a session that saw the mania start is still well ahead of our first terracotta. */
+    private fun beforeFirstCycle(): Boolean {
+        val start = startRemaining ?: return false
+        val now = maniaRemaining ?: return false
+        return start >= FIRST_CYCLE_REMAINING + FIRST_CYCLE_WINDOW && now > FIRST_CYCLE_REMAINING + PRE_START_MARGIN
     }
 
     private fun lockCentre(x: Int, z: Int, reset: Boolean) {
@@ -505,8 +635,17 @@ internal class ManiaSession(
         // A late batch for a cycle we already predicted as missed.
         val replacing = cycleIndex >= 0 && greenRing == 0 && phasePredicted &&
             sinceStart <= CYCLE_WINDOW_MAX - CYCLE_TICKS
+        // Lost our ring (missed cycle) but a strong RED batch arrived off-window (e.g. after a
+        // 25t-late start every real step lands outside 58..76): re-anchor instead of staying
+        // unknown forever. RED-gated so redstone/coal resends (R~0) can never trigger it.
+        val reanchoring = cycleIndex >= 0 && greenRing == 0 && phasePredicted &&
+            reds.size >= MIN_RED_FOR_LOCK
 
-        if (!continuation && !replacing) {
+        if (!continuation && !replacing && !reanchoring) {
+            // RED only appears in the terracotta step (redstone/coal resend G+C/G+RS+C):
+            // greens alone are a resend, not a new cycle (t52144/t52404 false starts).
+            if (reds.size < MIN_RED_FOR_LOCK)
+                return outcome(false) { "ignored (no RED ${reds.size}/${MIN_RED_FOR_LOCK}; resend?)" }
             // Our cycles are ~66 server ticks apart; another boss's batches rarely land in this window.
             if (cycleIndex >= 0 && sinceStart !in CYCLE_WINDOW_MIN..CYCLE_WINDOW_MAX)
                 return outcome(false) { "ignored (${sinceStart}t since cycle start)" }
@@ -525,11 +664,14 @@ internal class ManiaSession(
         val ring = if (continuation) greenRing else pickedRing
         val consistent = greenHist[ring] + redRing - redHist[ring]
         if (consistent < total * MIN_CONSISTENCY) return outcome(false) { "ignored (consistency $consistent/$total)" }
+        // Red cells agree with almost any ring, so a foreign pattern can look consistent; its green ring can't.
+        if (greens.size >= MIN_PURITY_GREENS && greenHist[ring] < greens.size * MIN_GREEN_PURITY)
+            return outcome(false) { "ignored (green purity ${greenHist[ring]}/${greens.size} for ring $ring)" }
         if (!continuation && margin * 2 < total * MIN_MARGIN)
             return outcome(false) { "ignored (ambiguous ring, $pickedConsistent vs ${pickedConsistent - margin})" }
 
         if (!continuation) {
-            if (!replacing) cycleIndex++
+            if (!replacing && !reanchoring) cycleIndex++
             greenRing = ring
             phase = Phase.TERRACOTTA
             phasePredicted = false
@@ -545,7 +687,7 @@ internal class ManiaSession(
         resolveBands()
 
         return outcome(true) {
-            val kind = if (continuation) "continuation" else if (replacing) "late" else "cycle ${cycleIndex + 1}"
+            val kind = if (continuation) "continuation" else if (replacing) "late" else if (reanchoring) "re-anchored" else "cycle ${cycleIndex + 1}"
             "ours, $kind, ring $ring ($consistent/$total)"
         }
     }
@@ -706,6 +848,7 @@ internal class ManiaSession(
         const val MISSED_CYCLE_GRACE = 4
         const val FIRST_CYCLE_REMAINING = 25.0
         const val FIRST_CYCLE_WINDOW = 0.35
+        const val PRE_START_MARGIN = 0.5
         const val NEAR_FIT_RANGE = 2
         const val CYCLE_WINDOW_MIN = 58L
         const val CYCLE_WINDOW_MAX = 76L
@@ -714,12 +857,22 @@ internal class ManiaSession(
         const val MIN_COAL_DELAY = 8
 
         const val MIN_CELLS = 8
+        const val MIN_RED_FOR_LOCK = 12
+        const val FOREIGN_TOLERANCE = 0.35
         const val MIN_FIT_CELLS = 30
         const val MAX_REFITS = 2
         const val MIN_FIT_CONSISTENCY = 0.7
         const val FAR_FIT_CONSISTENCY = 0.9
         const val FAR_FIT_WINS = 2
         const val MIN_CONSISTENCY = 0.8
+        const val MIN_GREEN_PURITY = 0.75
+        const val MIN_PURITY_GREENS = 4
+        const val FOREIGN_MIN_CELLS = 6
+        const val GROUP_TERRACOTTA = 0
+        const val GROUP_REDSTONE = 1
+        const val GROUP_COAL = 2
+        const val GROUP_NONE = 3
+        val GROUP_NAMES = arrayOf("terracotta", "redstone", "coal")
         const val OVERRIDE_MARGIN = 3
         const val COAL_WEIGHT = 3
         const val MIN_MARGIN = 0.15

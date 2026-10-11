@@ -51,6 +51,8 @@ object ManiaHelper : Module(
     private const val TEXT_HEIGHT = 9
     private const val BLOCK_TINT_INDEX = 1
     private const val PLANE_Y_OFFSET = 0.1
+    private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
+    private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
 
     private val style by SelectorSetting(
         name = "Render style",
@@ -454,7 +456,7 @@ object ManiaHelper : Module(
             lastY = IntArray(offsets.size)
         }
 
-        /** Once [s] has a locked centre, columns outside its pattern are skipped. */
+        /** Once [s] has a locked centre, columns too far from it to tell foreign patterns apart are skipped. */
         fun scan(level: Level, playerY: Int, s: ManiaSession, tick: Long, out: MutableList<ManiaUpdate>) {
             if (playerY != levelsPlayerY) {
                 levelsPlayerY = playerY
@@ -466,7 +468,7 @@ object ManiaHelper : Module(
                 if (s.locked) {
                     val dx = x - s.centreX
                     val dz = z - s.centreZ
-                    if (dx * dx + dz * dz > ManiaGeometry.PATTERN_RADIUS_SQ) continue
+                    if (dx * dx + dz * dz > LOCKED_SCAN_RADIUS_SQ) continue
                 }
                 var type = ManiaBlock.NONE
                 var foundY = 0
