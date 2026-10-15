@@ -13,6 +13,8 @@ import dev.cd.adrift.events.SlayerEvent
 import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.network.chat.Component
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.item.ItemEntity
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -47,61 +49,81 @@ object BossSlots : Module(
         default = true,
         desc = "Play slot tick sounds",
     )
+    private val hideItems by BooleanSetting(
+        "Hide Dropped Items",
+        default = true,
+        desc = "Hide item entities near the dead boss until the spin finishes",
+    )
 
-    private const val QUEST_COMPLETE = "SLAYER QUEST COMPLETE!"
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
-    private const val OPEN_DELAY_MS = 2000L
     private const val MAX_HIDDEN = 10
 
-    private var pendingOpen = false
     private var collecting = false
-    private var openAtMs = 0L
     private var spinning = false
+    private var screen: BossDropsSpinner? = null
+
+    /** Rift state cached on tick so the render-thread mixin never touches client state. */
+    @Volatile
+    private var inRiftCached = false
+
     private val pendingDrops = mutableListOf<VampireDrop>()
     private val hidden = mutableListOf<Component>()
 
+    /**
+     * Called from the entity-render mixin. Hides every item entity while in
+     * the Rift, no fight tracking involved.
+     */
+    @JvmStatic
+    fun shouldHideItemEntities(entity: Entity): Boolean {
+        if (!enabled || !hideItems) return false
+        if (!inRiftCached) return false
+        return entity is ItemEntity
+    }
+
     init {
+        on<SlayerEvent.Spawn> {
+            if (LocationUtils.currentArea != Island.Rift) return@on
+            pendingDrops.clear()
+            hidden.clear()
+        }
+
         on<SlayerEvent.Death> {
             if (!enabled || LocationUtils.currentArea != Island.Rift) return@on
             if (spinning || mc.screen != null) return@on
             pendingDrops.clear()
             hidden.clear()
             collecting = true
-            pendingOpen = true
-            openAtMs = System.currentTimeMillis() + OPEN_DELAY_MS
+            println("[Adrift] BossSlots: boss died, revealing immediately")
+            mc.execute { openScreen() }
         }
 
         on<TickEvent.Server> {
-            if (!pendingOpen) return@on
-            if (System.currentTimeMillis() < openAtMs) return@on
-            pendingOpen = false
-            collecting = false
-            mc.execute { openScreen() }
+            inRiftCached = LocationUtils.currentArea == Island.Rift
         }
 
         on<MessageEvent.Chat> {
             if (!enabled || LocationUtils.currentArea != Island.Rift) return@on
-            if (!collecting && !pendingOpen && !spinning) return@on
+
+            if (!collecting && !spinning) return@on
 
             if (message.contains(QUEST_FAILED)) {
-                pendingOpen = false
                 collecting = false
                 pendingDrops.clear()
-                hidden.clear()
                 return@on
-            }
-            if (pendingOpen && message.contains(QUEST_COMPLETE)) {
-                // Loot chat is complete; reveal immediately.
-                pendingOpen = false
-                collecting = false
-                mc.execute { openScreen() }
             }
 
             val lines = message.split("\n")
             val found = lines.mapNotNull(VampireDrop::fromChatLine)
             if (found.isEmpty()) return@on
 
-            if (collecting || pendingOpen) pendingDrops.addAll(found)
+            pendingDrops.addAll(found)
+            // Drops arrive during the animation; steer the reels that are
+            // still spinning toward the real result.
+            val active = screen
+            if (active != null) {
+                val drops = pendingDrops.toList()
+                mc.execute { active.updateWinningDrops(drops) }
+            }
             if (hideDrops && hidden.size < MAX_HIDDEN) {
                 cancel()
                 hidden.add(component)
@@ -109,9 +131,10 @@ object BossSlots : Module(
         }
 
         on<LevelEvent.Load> {
-            pendingOpen = false
             collecting = false
             spinning = false
+            screen = null
+            inRiftCached = false
             pendingDrops.clear()
             hidden.clear()
         }
@@ -138,12 +161,15 @@ object BossSlots : Module(
         spinning = true
         val queued = hidden.toList()
         hidden.clear()
-        mc.setScreen(
-            BossDropsSpinner(wins, spinDuration.seconds, playSounds) {
-                resendHidden(queued)
-                spinning = false
-            },
-        )
+        val spinner = BossDropsSpinner(wins, spinDuration.seconds, playSounds) {
+            resendHidden(queued)
+            spinning = false
+            collecting = false
+            screen = null
+            println("[Adrift] BossSlots: reveal finished, re-sent ${queued.size} hidden message(s)")
+        }
+        screen = spinner
+        mc.setScreen(spinner)
     }
 
     private fun resendHidden(messages: List<Component>) {

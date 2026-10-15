@@ -1,8 +1,7 @@
 package dev.cd.adrift.utils
 
 import net.minecraft.ChatFormatting
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.Items
+import net.minecraft.resources.Identifier
 
 /**
  * Full Riftstalker Bloodfiend loot table (see Hypixel SkyBlock Wiki).
@@ -17,11 +16,15 @@ import net.minecraft.world.item.Items
  * Consequences: two drops at once are possible (Main + Extra, or anything +
  * Sangria), but two Main drops (e.g. The One bundle + Unfanged part) cannot
  * happen on a single kill. [resolveWinningDrops] enforces that.
+ *
+ * Reel icons are wiki item sprites shipped under
+ * `assets/adrift/textures/gui/boss_slots/`. Both bundles share one sprite;
+ * The One gets a gold border at render time to tell them apart.
  */
 enum class VampireDrop(
     val displayName: String,
     val chatKeys: List<String>,
-    val item: Item,
+    val texture: String,
     val color: ChatFormatting,
     val weight: Double,
     val pool: Pool,
@@ -30,7 +33,7 @@ enum class VampireDrop(
     SANGRIA(
         "Sangria Dye",
         listOf("sangria"),
-        Items.RED_DYE,
+        "sangria_dye.png",
         ChatFormatting.GOLD,
         1.0,
         Pool.SPECIAL,
@@ -39,7 +42,7 @@ enum class VampireDrop(
     THE_ONE(
         "The One IV Bundle",
         listOf("the one"),
-        Items.ENCHANTED_BOOK,
+        "bundle.png",
         ChatFormatting.GOLD,
         3.0,
         Pool.MAIN,
@@ -48,7 +51,7 @@ enum class VampireDrop(
     BURGER(
         "McGrubber's Burger",
         listOf("mcgrubber"),
-        Items.BREAD,
+        "burger.png",
         ChatFormatting.DARK_PURPLE,
         2.0,
         Pool.MAIN,
@@ -57,7 +60,7 @@ enum class VampireDrop(
     UNFANGED(
         "Unfanged Vampire Part",
         listOf("unfanged"),
-        Items.BONE,
+        "unfanged.png",
         ChatFormatting.GOLD,
         2.0,
         Pool.MAIN,
@@ -66,7 +69,7 @@ enum class VampireDrop(
     GUARDIAN(
         "Guardian Lucky Block",
         listOf("guardian"),
-        Items.CHEST,
+        "guardian_lucky_block.png",
         ChatFormatting.LIGHT_PURPLE,
         10.0,
         Pool.MAIN,
@@ -75,7 +78,7 @@ enum class VampireDrop(
     BUBBA(
         "Bubba Blister",
         listOf("bubba"),
-        Items.SLIME_BALL,
+        "bubba_blister.png",
         ChatFormatting.GOLD,
         15.0,
         Pool.MAIN,
@@ -84,7 +87,7 @@ enum class VampireDrop(
     FANGTASTIC(
         "Fang-tastic Chocolate Chip",
         listOf("fang-tastic", "fangtastic", "chocolate chip"),
-        Items.COOKIE,
+        "fangtastic.png",
         ChatFormatting.GOLD,
         15.0,
         Pool.MAIN,
@@ -93,7 +96,7 @@ enum class VampireDrop(
     QUANTUM(
         "Quantum III Bundle",
         listOf("quantum"),
-        Items.ENCHANTED_BOOK,
+        "bundle.png",
         ChatFormatting.LIGHT_PURPLE,
         20.0,
         Pool.MAIN,
@@ -102,29 +105,20 @@ enum class VampireDrop(
     SOULTWIST(
         "Soultwist Rune I",
         listOf("soultwist"),
-        Items.PAPER,
+        "soultwist_rune.png",
         ChatFormatting.AQUA,
         20.0,
         Pool.EXTRA,
         8,
     ),
-    BLOODBADGE(
-        "Bloodbadge",
-        listOf("bloodbadge"),
-        Items.GOLD_NUGGET,
-        ChatFormatting.RED,
-        5.0,
-        Pool.SPECIAL,
-        9,
-    ),
     COVEN_SEAL(
         "Coven Seal",
         listOf("coven seal"),
-        Items.NETHER_WART,
+        "coven_seal.png",
         ChatFormatting.GREEN,
         30.0,
         Pool.TOKEN,
-        10,
+        9,
     ),
     ;
 
@@ -134,6 +128,9 @@ enum class VampireDrop(
         TOKEN,
         SPECIAL,
     }
+
+    val textureId: Identifier
+        get() = Identifier.fromNamespaceAndPath("adrift", "textures/gui/boss_slots/$texture")
 
     companion object {
         /**

@@ -1,20 +1,22 @@
 package dev.cd.adrift.features.impl.rift
 
+import com.mojang.blaze3d.platform.NativeImage
 import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.input.MouseButtonEvent
+import net.minecraft.client.renderer.RenderPipelines
 import net.minecraft.client.resources.sounds.SimpleSoundInstance
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvents
-import net.minecraft.world.item.ItemStack
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.time.Duration
 
 /**
- * Slot-machine reveal for vampire boss drops, in the spirit of SkyOcean's
- * SlotMachineSpinner but item-only (no custom textures).
+ * Fullscreen slot-machine reveal for vampire boss drops, in the spirit of
+ * SkyOcean's SlotMachineSpinner but rendering wiki item sprites
+ * (see VampireDrop) instead of vanilla items.
  *
  * Three reels spin with staggered stop times ([baseDuration] + 1s per reel).
  * The final position shows the actual drops: a single drop lands as a triple,
@@ -28,15 +30,15 @@ class BossDropsSpinner(
     private val playSounds: Boolean,
     private val onFinish: () -> Unit,
 ) : Screen(Component.literal("Boss Slots")) {
-    private val finals: List<VampireDrop> = resolveFinals(winningDrops)
-    private val reels = mutableListOf<List<VampireDrop>>()
-    private val stacks = VampireDrop.entries.associateWith { ItemStack(it.item) }
+    private val finals: MutableList<VampireDrop> = resolveFinals(winningDrops).toMutableList()
+    private val reels = mutableListOf<MutableList<VampireDrop>>()
+    private val texDims = mutableMapOf<VampireDrop, Pair<Int, Int>>()
 
     private val startTime = System.currentTimeMillis() + 200L
     private val waitPerReelMs = 1000L
     private val holdAfterMs = 3000L
-    private val rowHeight = 22
-    private val reelGap = 48
+    private val spriteSize = 48
+    private val rowHeight = 58
 
     private val lastScrollIndex = IntArray(3) { -1 }
     private val reelStopped = BooleanArray(3)
@@ -55,6 +57,24 @@ class BossDropsSpinner(
             val reel = MutableList(length) { randomDrop() }
             reel[length - 2] = finals[i]
             reels.add(reel)
+        }
+    }
+
+    /**
+     * Late-binds the real drops while reels are still spinning (drops are
+     * collected during the animation). Reels that already stopped keep their
+     * result, so very late loot only affects the remaining reels.
+     */
+    fun updateWinningDrops(drops: List<VampireDrop>) {
+        val updated = resolveFinals(drops)
+        val elapsed = System.currentTimeMillis() - startTime
+        for (i in 0..2) {
+            if (i >= reels.size) return
+            val spinMs = baseDuration.inWholeMilliseconds + (i * waitPerReelMs)
+            if (elapsed < spinMs && !reelStopped[i]) {
+                finals[i] = updated[i]
+                reels[i][reels[i].size - 2] = updated[i]
+            }
         }
     }
 
@@ -102,29 +122,42 @@ class BossDropsSpinner(
     override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         val elapsed = System.currentTimeMillis() - startTime
         val font = Minecraft.getInstance().font
-        val cx = width / 2
-        val cy = height / 2 + 8
+        val cy = height / 2
 
-        graphics.fill(0, 0, width, height, 0x80000000.toInt())
-        graphics.fill(cx - 84, cy - 84, cx + 84, cy + 92, 0xFF101010.toInt())
-        graphics.fill(cx - 84, cy - 84, cx + 84, cy - 83, 0xFFD70000.toInt())
-        graphics.fill(cx - 84, cy + 91, cx + 84, cy + 92, 0xFFD70000.toInt())
+        graphics.fill(0, 0, width, height, 0xA0000000.toInt())
 
-        graphics.centeredText(font, Component.literal("VAMPIRE SLOTS").withStyle(finals.first().color), cx, cy - 74, 0xFFFFFF)
+        graphics.pose().pushMatrix()
+        graphics.pose().translate((width / 2).toFloat(), height * 0.12f)
+        graphics.pose().scale(3f, 3f)
+        graphics.centeredText(
+            font,
+            Component.literal("VAMPIRE SLOTS").withStyle(finals.first().color),
+            0,
+            0,
+            0xFFFFFF,
+        )
+        graphics.pose().popMatrix()
 
         for (i in 0..2) {
-            renderReel(graphics, i, elapsed, cx, cy)
+            renderReel(graphics, i, elapsed, cy)
         }
 
         if (allStopped()) {
-            graphics.centeredText(font, header(), cx, cy + 62, 0xFFFFFF)
-            graphics.centeredText(font, footer(), cx, cy + 74, 0xFFFFFF)
+            graphics.centeredText(font, header(), width / 2, cy + 110, 0xFFFFFF)
+            graphics.centeredText(font, footer(), width / 2, cy + 124, 0xFFFFFF)
+            graphics.centeredText(
+                font,
+                Component.literal("Click to close").withStyle(net.minecraft.ChatFormatting.GRAY),
+                width / 2,
+                cy + 140,
+                0xFFFFFF,
+            )
         } else {
             graphics.centeredText(
                 font,
                 Component.literal("Rolling...").withStyle(net.minecraft.ChatFormatting.GRAY),
-                cx,
-                cy + 68,
+                width / 2,
+                cy + 116,
                 0xFFFFFF,
             )
         }
@@ -132,13 +165,14 @@ class BossDropsSpinner(
         super.extractRenderState(graphics, mouseX, mouseY, partialTick)
     }
 
-    private fun renderReel(graphics: GuiGraphicsExtractor, index: Int, elapsed: Long, cx: Int, cy: Int) {
+    private fun renderReel(graphics: GuiGraphicsExtractor, index: Int, elapsed: Long, cy: Int) {
         if (reels.isEmpty()) return
         val spinMs = baseDuration.inWholeMilliseconds + (index * waitPerReelMs)
         val raw = (elapsed.toFloat() / spinMs.toFloat()).coerceIn(0f, 1f)
         val eased = easeOutQuad(raw)
 
-        val x = cx + ((index - 1) * reelGap)
+        // Spread across the full screen width.
+        val x = (width * (index + 1)) / 4
         val reel = reels[index]
         val totalPx = (reel.size - 2) * rowHeight
         val scrollY = totalPx * eased
@@ -155,14 +189,58 @@ class BossDropsSpinner(
         }
 
         val pixelOffset = (scrollY % rowHeight).toInt()
+        val half = spriteSize / 2 + 4
         // Winning-line backdrop behind the center row.
-        graphics.fill(x - 13, cy - 11, x + 13, cy + 11, 0x40FFFFFF)
+        graphics.fill(x - half, cy - half, x + half, cy + half, 0x40FFFFFF)
 
         for (offset in -1..1) {
             val target = (baseIndex + offset).coerceIn(0, reel.size - 1)
-            val stack = stacks[reel[target]] ?: continue
+            val drop = reel[target]
             val itemY = cy + pixelOffset - (offset * rowHeight)
-            graphics.item(stack, x - 8, itemY - 8)
+            drawSprite(graphics, drop, x - half + 4, itemY - half + 4)
+        }
+    }
+
+    private fun drawSprite(graphics: GuiGraphicsExtractor, drop: VampireDrop, x: Int, y: Int) {
+        val (texW, texH) = texSize(drop)
+        graphics.blit(
+            RenderPipelines.GUI_TEXTURED,
+            drop.textureId,
+            x,
+            y,
+            0.0f,
+            0.0f,
+            spriteSize,
+            spriteSize,
+            texW,
+            texH,
+            0xFFFFFFFF.toInt(),
+        )
+        // Both bundles share one sprite; mark The One with a gold border.
+        if (drop == VampireDrop.THE_ONE) {
+            val gold = 0xFFFFAA00.toInt()
+            val b = 2
+            graphics.fill(x - b, y - b, x + spriteSize + b, y, gold)
+            graphics.fill(x - b, y + spriteSize, x + spriteSize + b, y + spriteSize + b, gold)
+            graphics.fill(x - b, y, x, y + spriteSize, gold)
+            graphics.fill(x + spriteSize, y, x + spriteSize + b, y + spriteSize, gold)
+        }
+    }
+
+    /**
+     * Reads the real PNG dimensions once per drop so blit UVs stay correct
+     * whatever resolution the shipped sprites are. Falls back to 16x16.
+     */
+    private fun texSize(drop: VampireDrop): Pair<Int, Int> = texDims.getOrPut(drop) {
+        try {
+            Minecraft.getInstance().resourceManager.getResource(drop.textureId).orElseThrow().open().use {
+                val image = NativeImage.read(it)
+                val dims = image.width to image.height
+                image.close()
+                dims
+            }
+        } catch (_: Exception) {
+            16 to 16
         }
     }
 

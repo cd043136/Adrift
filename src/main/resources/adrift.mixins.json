@@ -14,6 +14,7 @@
   "client": [
     "MinecraftMixin",
     "EntityRendererMixin",
+    "DroppedItemsMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin",
     "OutlineBufferSourceMixin",
