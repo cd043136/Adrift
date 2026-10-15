@@ -235,7 +235,7 @@ object VampireHelper : Module(
         val titleWidth = font.width(text)
         graphics.pose().pushMatrix()
         graphics.pose().translate(graphics.guiWidth() / 2f, graphics.guiHeight() / 2f)
-        graphics.pose().scale(4f, 4f)
+        graphics.pose().scale(3f, 3f)
         graphics.textWithBackdrop(font, text, -titleWidth / 2, -10, titleWidth, ARGB.white(255))
         graphics.pose().popMatrix()
     }
