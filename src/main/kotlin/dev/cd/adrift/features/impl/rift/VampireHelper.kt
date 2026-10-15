@@ -1,8 +1,12 @@
 package dev.cd.adrift.features.impl.rift
 
+import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
+import com.odtheking.odin.clickgui.settings.impl.NumberSetting
+import com.odtheking.odin.events.LevelEvent
 import com.odtheking.odin.events.RenderEvent
+import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.Color
@@ -17,6 +21,13 @@ import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.RenderUtils.drawFilledQuad
 import dev.cd.adrift.utils.SlayerUtils
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
+import net.minecraft.client.DeltaTracker
+import net.minecraft.client.gui.GuiGraphicsExtractor
+import net.minecraft.network.chat.Component
+import net.minecraft.resources.Identifier
+import net.minecraft.util.ARGB
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.decoration.ArmorStand
@@ -51,9 +62,28 @@ object VampireHelper : Module(
         default = false,
         desc = "Send coords when your boss spawns"
     )
+    private val twinclawsAlert by BooleanSetting(
+        "Twinclaws Alert",
+        default = false,
+        desc = "Title when Twinclaws spawn"
+    )
+    private val twinclawsDelay by NumberSetting(
+        "Delay",
+        default = 0,
+        min = 0,
+        max = 1000,
+        increment = 10,
+        desc = "Delay before the alert",
+        unit = "ms"
+    ).withDependency { twinclawsAlert }
 
     const val ICHOR_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTYxNTg4ODAwMDU1MywKICAicHJvZmlsZUlkIiA6ICI5ZDIyZGRhOTVmZGI0MjFmOGZhNjAzNTI1YThkZmE4ZCIsCiAgInByb2ZpbGVOYW1lIiA6ICJTYWZlRHJpZnQ0OCIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9jMDM0MDkyM2E2ZGU0ODI1YTE3NjgxM2QxMzM1MDNlZmYxODZkYjA4OTZlMzJiNjcwNDkyOGMyYTJiZjY4NDIyIgogICAgfQogIH0KfQ=="
+    private const val TWINCLAWS_ALERT_MS = 1500L
     private val ichors: ConcurrentHashMap<Entity, CopyOnWriteArraySet<ArmorStand>> = ConcurrentHashMap()
+
+    @Volatile private var wasTwinclaws = false
+    @Volatile private var pendingAlertAt = 0L
+    @Volatile private var twinclawsAlertUntil = 0L
 
     init {
         // TODO: check ichor spawn timing based on armourstand timer (ICHOR 0.1s etc)
@@ -121,11 +151,23 @@ object VampireHelper : Module(
             if (LocationUtils.currentArea != Island.Rift) return@on
 
             ichors.clear()
+            resetTwinclawsState()
             if (!announceSpawn) return@on
 
             val pos = boss.blockPosition()
             sendCommand("pc x: ${pos.x}, y: ${pos.y}, z: ${pos.z} ; Boss Spawned")
         }
+
+        on<LevelEvent.Load> { resetTwinclawsState() }
+        on<LevelEvent.Unload> { resetTwinclawsState() }
+
+        on<TickEvent.Server> { pollTwinclaws() }
+
+        HudElementRegistry.attachElementAfter(
+            VanillaHudElements.MISC_OVERLAYS,
+            Identifier.fromNamespaceAndPath("adrift", "twinclaws_alert"),
+            ::renderTwinclawsAlert
+        )
     }
 
     private fun onEntityLoad(entity: Entity) {
@@ -144,6 +186,69 @@ object VampireHelper : Module(
 
     private fun bossPriority(): Entity? {
         return SlayerUtils.boss ?: SlayerUtils.lootshareBoss?.takeIf { otherBoss }
+    }
+
+    private fun pollTwinclaws() {
+        if (!twinclawsAlert) {
+            resetTwinclawsState()
+            return
+        }
+
+        val boss = SlayerUtils.boss?.takeIf { it.isAlive } ?: run {
+            resetTwinclawsState()
+            return
+        }
+        val timerName = mc.level?.getEntity(boss.id + 2)?.plainTextName
+        if (timerName == null || !timerName.contains("TWINCLAWS")) {
+            wasTwinclaws = false
+            pendingAlertAt = 0L
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (!wasTwinclaws) {
+            wasTwinclaws = true
+            val delayMs = twinclawsDelay.toLong()
+            
+            if (delayMs <= 0L) {
+                pendingAlertAt = 0L
+                fireTwinclawsAlert()
+            } 
+            else pendingAlertAt = now + delayMs
+            
+        } else if (pendingAlertAt != 0L && now >= pendingAlertAt) {
+            pendingAlertAt = 0L
+            fireTwinclawsAlert()
+        }
+    }
+
+    private fun fireTwinclawsAlert() {
+        twinclawsAlertUntil = System.currentTimeMillis() + TWINCLAWS_ALERT_MS
+    }
+
+    private fun renderTwinclawsAlert(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
+        if (!enabled || !twinclawsAlert) return
+        if (twinclawsAlertUntil - System.currentTimeMillis() <= 0) return
+
+        val font = mc.font
+        val text = Component.literal("§6§lTWINCLAWS!")
+        val titleWidth = font.width(text)
+        graphics.pose().pushMatrix()
+        graphics.pose().translate(graphics.guiWidth() / 2f, graphics.guiHeight() / 2f)
+        graphics.pose().scale(4f, 4f)
+        graphics.textWithBackdrop(font, text, -titleWidth / 2, -10, titleWidth, ARGB.white(255))
+        graphics.pose().popMatrix()
+    }
+
+    private fun resetTwinclawsState() {
+        wasTwinclaws = false
+        pendingAlertAt = 0L
+        twinclawsAlertUntil = 0L
+    }
+
+    override fun onDisable() {
+        super.onDisable()
+        resetTwinclawsState()
     }
 
     private fun onEntityUnload(entity: Entity) {

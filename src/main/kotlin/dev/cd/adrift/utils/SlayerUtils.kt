@@ -39,8 +39,13 @@ object SlayerUtils {
         on<LevelEvent.Load> { reset() }
 
         onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
-            if (LocationUtils.currentArea != Island.Rift || type != EntityType.PLAYER) return@onReceive
-            pending.addLast(SpawnCandidate(id, System.currentTimeMillis()))
+            if (type != EntityType.PLAYER) return@onReceive
+            val id = id
+            val now = System.currentTimeMillis()
+            Minecraft.getInstance().execute {
+                if (LocationUtils.currentArea != Island.Rift) return@execute
+                pending.addLast(SpawnCandidate(id, now))
+            }
         }
 
         on<MessageEvent.Chat> {
