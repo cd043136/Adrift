@@ -1,11 +1,11 @@
 package dev.cd.adrift.features.impl.rift
 
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
-import com.odtheking.odin.clickgui.settings.impl.NumberSetting
 import com.odtheking.odin.events.LevelEvent
 import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
+import com.odtheking.odin.events.core.onReceive
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.modMessage
 import com.odtheking.odin.utils.skyblock.Island
@@ -14,6 +14,8 @@ import dev.cd.adrift.events.SlayerEvent
 import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.network.chat.Component
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket
+import net.minecraft.network.protocol.game.ClientboundSoundPacket
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.item.ItemEntity
 import java.util.concurrent.ThreadLocalRandom
@@ -25,26 +27,25 @@ import kotlin.time.Duration.Companion.seconds
  * Coven Seal (the guaranteed token).
  *
  * Anti-spoil: while collecting (short window after death) and while spinning,
- * incoming `RARE DROP!` / `VERY RARE DROP!` / `CRAZY RARE DROP!` lines are
- * hidden and re-sent to chat once the animation finishes (or is skipped).
+ * ALL incoming server chat is hidden via `MessageEvent.Chat` cancel (packet
+ * itself is left alone so other mods still see it) and re-sent in order once
+ * the animation finishes (or is skipped). This covers the rare drop line(s)
+ * plus everything after them up to the last hidden message.
  */
 object BossSlots : Module(
     "Boss Slots",
     category = Category.RIFT,
     description = "CSGO-style case opening reveal for vampire boss drops",
 ) {
-    private val spinDuration by NumberSetting(
-        "Spin Duration",
-        default = 3.0,
-        min = 1.0,
-        max = 10.0,
-        increment = 0.5,
-        desc = "Base case spin time in seconds",
-    )
     private val hideDrops by BooleanSetting(
         "Hide Drop Messages",
         default = true,
-        desc = "Hide RARE DROP! messages during the spin and re-send them after",
+        desc = "Hide all chat during the spin and re-send it in order after",
+    )
+    private val muteSounds by BooleanSetting(
+        "Mute Sounds",
+        default = true,
+        desc = "Cancel incoming sound packets during the spin (not re-played)",
     )
     private val playSounds by BooleanSetting(
         "Play Sounds",
@@ -58,7 +59,8 @@ object BossSlots : Module(
     )
 
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
-    private const val MAX_HIDDEN = 10
+    private const val MAX_HIDDEN = 50
+    private val SPIN_DURATION = 8.seconds
 
     private var collecting = false
     private var spinning = false
@@ -80,6 +82,39 @@ object BossSlots : Module(
         if (!enabled || !hideItems) return false
         if (!inRiftCached) return false
         return entity is ItemEntity
+    }
+
+    /** True while incoming server chat is being buffered instead of displayed. */
+    @JvmStatic
+    fun isSuppressingChat(): Boolean =
+        enabled && hideDrops && (collecting || spinning)
+
+    /** True while incoming sound packets are being dropped. */
+    private fun shouldMuteSounds(): Boolean =
+        enabled && muteSounds && (collecting || spinning)
+
+    /**
+     * Buffers a client-rebuilt component (e.g. SlayerDrops rename) so it is
+     * re-sent in order with everything else. Returns false when not
+     * suppressing or the buffer is full (caller should display immediately).
+     */
+    fun stashForResend(component: Component): Boolean {
+        if (!isSuppressingChat()) return false
+        if (hidden.size >= MAX_HIDDEN) return false
+        hidden.add(component)
+        return true
+    }
+
+    /**
+     * Swaps an already-buffered original for a rebuilt copy (e.g. renamed),
+     * preserving its position so order stays intact. Returns false when the
+     * original is not the latest buffered entry.
+     */
+    fun replaceLastBuffered(original: Component, replacement: Component): Boolean {
+        if (hidden.isEmpty()) return false
+        if (hidden.last() !== original && hidden.last().string != original.string) return false
+        hidden[hidden.lastIndex] = replacement
+        return true
     }
 
     init {
@@ -111,21 +146,30 @@ object BossSlots : Module(
             if (message.contains(QUEST_FAILED)) {
                 collecting = false
                 pendingDrops.clear()
+                // No spinner to do the resend; drain now so nothing is lost.
+                // The fail line itself stays visible.
+                if (!spinning) drainHidden()
                 return@on
             }
 
             val lines = message.split("\n")
             val found = lines.mapNotNull(VampireDrop::fromChatLine)
-            if (found.isEmpty()) return@on
-
-            pendingDrops.addAll(found)
-            // Drops arrive during the animation; steer the reels that are
-            // still spinning toward the real result.
-            val active = screen
-            if (active != null) {
-                val drops = pendingDrops.toList()
-                mc.execute { active.updateWinningDrops(drops) }
+            if (found.isNotEmpty()) {
+                pendingDrops.addAll(found)
+                // Drops arrive during the animation; steer the reels that are
+                // still spinning toward the real result.
+                val active = screen
+                if (active != null) {
+                    val drops = pendingDrops.toList()
+                    mc.execute { active.updateWinningDrops(drops) }
+                }
             }
+            // Hide ALL server chat while active (rare drop + everything after
+            // it), not just drop lines. Cancel only blocks vanilla display;
+            // the packet already arrived so other mods still see this event.
+            // Skip own buffering when another module already cancelled (e.g.
+            // SlayerDrops stashed a renamed copy) to avoid double resend.
+            if (isCancelled) return@on
             if (hideDrops && hidden.size < MAX_HIDDEN) {
                 cancel()
                 hidden.add(component)
@@ -140,6 +184,14 @@ object BossSlots : Module(
             pendingDrops.clear()
             hidden.clear()
         }
+
+        onReceive<ClientboundSoundPacket> {
+            if (shouldMuteSounds()) it.cancel()
+        }
+
+        onReceive<ClientboundSoundEntityPacket> {
+            if (shouldMuteSounds()) it.cancel()
+        }
     }
 
     private fun openScreen() {
@@ -153,25 +205,32 @@ object BossSlots : Module(
         if (mc.screen != null) {
             // Player opened something (chest, chat); don't override it.
             // Re-send anything we hid so messages are never lost.
-            resendHidden(hidden.toList())
-            hidden.clear()
+            drainHidden()
             pendingDrops.clear()
+            collecting = false
             return
         }
         val wins = VampireDrop.resolveWinningDrops(pendingDrops.toList())
         pendingDrops.clear()
         spinning = true
-        val queued = hidden.toList()
-        hidden.clear()
-        val spinner = BossDropsSpinner(wins, spinDuration.seconds, playSounds) {
-            resendHidden(queued)
+        val spinner = BossDropsSpinner(wins, SPIN_DURATION, playSounds) {
+            val count = drainHidden()
             spinning = false
             collecting = false
             screen = null
-            println("[Adrift] BossSlots: reveal finished, re-sent ${queued.size} hidden message(s)")
+            println("[Adrift] BossSlots: reveal finished, re-sent $count hidden message(s)")
         }
         screen = spinner
         mc.setScreen(spinner)
+    }
+
+    /** Re-sends buffered chat in original order. Returns count re-sent. */
+    private fun drainHidden(): Int {
+        if (hidden.isEmpty()) return 0
+        val messages = hidden.toList()
+        hidden.clear()
+        resendHidden(messages)
+        return messages.size
     }
 
     private fun resendHidden(messages: List<Component>) {
@@ -193,7 +252,8 @@ object BossSlots : Module(
                 return@execute
             }
             spinning = true
-            val spinner = BossDropsSpinner(drops, spinDuration.seconds, playSounds) {
+            val spinner = BossDropsSpinner(drops, SPIN_DURATION, playSounds) {
+                drainHidden()
                 spinning = false
                 collecting = false
                 screen = null

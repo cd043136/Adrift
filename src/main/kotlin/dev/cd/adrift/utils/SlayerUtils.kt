@@ -105,13 +105,18 @@ object SlayerUtils {
             }
         }
 
-        // boss death check (isDeadOrDying fires on the death animation,
-        // isAlive flips once the entity is removed)
         boss?.let {
-            if (it.isDeadOrDying || !it.isAlive) {
+            if (it.isDeadOrDying) {
+                // boss die
                 this.boss = null
                 this.timer = null
                 SlayerEvent.Death().postAndCatch()
+            }
+            
+            else if (!it.isAlive) {
+                // we die or boss somehow out of sim distance
+                this.boss = null
+                this.timer = null
             }
         }
     }

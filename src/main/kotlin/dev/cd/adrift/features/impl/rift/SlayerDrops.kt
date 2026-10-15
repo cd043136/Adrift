@@ -74,8 +74,26 @@ object SlayerDrops : Module(
                     val out = if (ValuableDrop.BUNDLE.matches(piece)) ValuableDrop.BUNDLE.rename(piece.string) else piece.string
                     rebuilt.append(Component.literal(out).withStyle(piece.style))
                 }
-                cancel()
-                mc.schedule { mc.gui.chat.addClientSystemMessage(rebuilt) }
+                // During BossSlots reveal, route the renamed line through its
+                // ordered buffer instead of displaying it immediately.
+                if (BossSlots.isSuppressingChat()) {
+                    if (isCancelled) {
+                        // BossSlots already buffered the original; swap in the
+                        // renamed copy to keep order + rename.
+                        if (!BossSlots.replaceLastBuffered(component, rebuilt)) {
+                            BossSlots.stashForResend(rebuilt)
+                        }
+                        cancel()
+                    } else if (BossSlots.stashForResend(rebuilt)) {
+                        cancel()
+                    } else {
+                        cancel()
+                        mc.schedule { mc.gui.chat.addClientSystemMessage(rebuilt) }
+                    }
+                } else {
+                    cancel()
+                    mc.schedule { mc.gui.chat.addClientSystemMessage(rebuilt) }
+                }
                 displayRenamed = true
             }
 
