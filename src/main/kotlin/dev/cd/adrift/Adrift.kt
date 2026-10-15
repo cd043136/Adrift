@@ -4,6 +4,7 @@ import com.odtheking.odin.config.ModuleConfig
 import com.odtheking.odin.events.core.EventBus
 import com.odtheking.odin.features.ModuleManager
 import dev.cd.adrift.commands.adriftCommand
+import dev.cd.adrift.commands.simulateCommand
 import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.BeaconSoul
 import dev.cd.adrift.features.impl.rift.BossHighlight
@@ -25,7 +26,7 @@ object Adrift : ClientModInitializer {
 
         // Register commands by adding to the array
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
-            arrayOf(adriftCommand).forEach { commodore -> commodore.register(dispatcher) }
+            arrayOf(adriftCommand, simulateCommand).forEach { commodore -> commodore.register(dispatcher) }
         }
 
         // Register objects to event bus by adding to the list

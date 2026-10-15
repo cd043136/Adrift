@@ -14,15 +14,18 @@ import java.util.concurrent.ThreadLocalRandom
 import kotlin.time.Duration
 
 /**
- * Fullscreen slot-machine reveal for vampire boss drops, in the spirit of
- * SkyOcean's SlotMachineSpinner but rendering wiki item sprites
+ * Fullscreen CSGO-style case opening reveal for vampire boss drops, in the
+ * spirit of SkyOcean's SlotMachineSpinner but rendering wiki item sprites
  * (see VampireDrop) instead of vanilla items.
  *
- * Three reels spin with staggered stop times ([baseDuration] + 1s per reel).
- * The final position shows the actual drops: a single drop lands as a triple,
- * two drops (Main + Extra, or anything + Sangria) land as [first, first,
- * second], three land as-is. Hidden drop chat is re-sent via [onFinish],
- * which also runs when the screen is closed early or skipped.
+ * A single horizontal strip of [stripLength] cells scrolls left under a center
+ * needle with quartic ease-out over [baseDuration]. The real drops are
+ * pre-placed in a single winner cell near the end of the strip: singles
+ * render full-size, pairs sit diagonal, triples share a row, with the
+ * rarity bar split per drop. The needle stops at a random point inside
+ * the winner cell (near an edge, not just dead center) so the result isn't
+ * predictable. Hidden drop chat is re-sent via [onFinish], which also runs
+ * when the screen is closed early or skipped.
  */
 class BossDropsSpinner(
     winningDrops: List<VampireDrop>,
@@ -30,52 +33,63 @@ class BossDropsSpinner(
     private val playSounds: Boolean,
     private val onFinish: () -> Unit,
 ) : Screen(Component.literal("Boss Slots")) {
-    private val finals: MutableList<VampireDrop> = resolveFinals(winningDrops).toMutableList()
-    private val reels = mutableListOf<MutableList<VampireDrop>>()
+    private val winners: MutableList<VampireDrop> =
+        VampireDrop.resolveWinningDrops(winningDrops).toMutableList()
+    private val strip = mutableListOf<MutableList<VampireDrop>>()
     private val texDims = mutableMapOf<VampireDrop, Pair<Int, Int>>()
 
     private val startTime = System.currentTimeMillis() + 200L
-    private val waitPerReelMs = 1000L
     private val holdAfterMs = 3000L
-    private val spriteSize = 48
-    private val rowHeight = 58
 
-    private val lastScrollIndex = IntArray(3) { -1 }
-    private val reelStopped = BooleanArray(3)
+    private val cellSize = 72
+    private val spriteSize = 48
+    private val gap = 6
+    private val stride = cellSize + gap
+    private val stripLength = 80
+
+    private var winStartIdx = 0
+    private var needleOffsetPx = 0f
+    private var lastNeedleIndex = -1
+    private var stopped = false
     private var fanfarePlayed = false
     private var lastSoundAt = 0L
     private var finished = false
 
     private val totalSpinMs: Long
-        get() = baseDuration.inWholeMilliseconds + (2 * waitPerReelMs)
+        get() = baseDuration.inWholeMilliseconds
 
     override fun init() {
         super.init()
-        reels.clear()
-        for (i in 0..2) {
-            val length = 250 + (i * 20)
-            val reel = MutableList(length) { randomDrop() }
-            reel[length - 2] = finals[i]
-            reels.add(reel)
-        }
+        strip.clear()
+        repeat(stripLength) { strip.add(randomFillerCell()) }
+        // Winner cell near the end, leaving a short visible tail so the
+        // needle arrival reads as a decel rather than an abrupt edge stop.
+        winStartIdx = (stripLength - 10 - ThreadLocalRandom.current().nextInt(0, 4))
+            .coerceIn(0, stripLength - 5)
+        placeWinners()
+        rollNeedleOffset()
+        lastNeedleIndex = -1
+        stopped = false
+    }
+
+    private fun placeWinners() {
+        // The winner cell aliases the live winners list so late-binding loot
+        // updates it in place; rendering draws all of them combined.
+        strip[winStartIdx.coerceIn(0, strip.size - 1)] = winners
     }
 
     /**
-     * Late-binds the real drops while reels are still spinning (drops are
-     * collected during the animation). Reels that already stopped keep their
-     * result, so very late loot only affects the remaining reels.
+     * Late-binds the real drops while the strip is still spinning (drops are
+     * collected during the animation). Once stopped the result is locked.
      */
     fun updateWinningDrops(drops: List<VampireDrop>) {
-        val updated = resolveFinals(drops)
+        val updated = VampireDrop.resolveWinningDrops(drops)
         val elapsed = System.currentTimeMillis() - startTime
-        for (i in 0..2) {
-            if (i >= reels.size) return
-            val spinMs = baseDuration.inWholeMilliseconds + (i * waitPerReelMs)
-            if (elapsed < spinMs && !reelStopped[i]) {
-                finals[i] = updated[i]
-                reels[i][reels[i].size - 2] = updated[i]
-            }
-        }
+        if (elapsed >= totalSpinMs || stopped || strip.isEmpty()) return
+        winners.clear()
+        winners.addAll(updated)
+        placeWinners()
+        rollNeedleOffset()
     }
 
     override fun isPauseScreen(): Boolean = false
@@ -131,16 +145,14 @@ class BossDropsSpinner(
         graphics.pose().scale(3f, 3f)
         graphics.centeredText(
             font,
-            Component.literal("VAMPIRE SLOTS").withStyle(finals.first().color),
+            Component.literal("VAMPIRE CASE").withStyle(winners.first().color),
             0,
             0,
             0xFFFFFF,
         )
         graphics.pose().popMatrix()
 
-        for (i in 0..2) {
-            renderReel(graphics, i, elapsed, cy)
-        }
+        renderStrip(graphics, elapsed, cy)
 
         if (allStopped()) {
             graphics.centeredText(font, header(), width / 2, cy + 110, 0xFFFFFF)
@@ -155,7 +167,7 @@ class BossDropsSpinner(
         } else {
             graphics.centeredText(
                 font,
-                Component.literal("Rolling...").withStyle(net.minecraft.ChatFormatting.GRAY),
+                Component.literal("Opening...").withStyle(net.minecraft.ChatFormatting.GRAY),
                 width / 2,
                 cy + 116,
                 0xFFFFFF,
@@ -165,66 +177,159 @@ class BossDropsSpinner(
         super.extractRenderState(graphics, mouseX, mouseY, partialTick)
     }
 
-    private fun renderReel(graphics: GuiGraphicsExtractor, index: Int, elapsed: Long, cy: Int) {
-        if (reels.isEmpty()) return
-        val spinMs = baseDuration.inWholeMilliseconds + (index * waitPerReelMs)
-        val raw = (elapsed.toFloat() / spinMs.toFloat()).coerceIn(0f, 1f)
-        val eased = easeOutQuad(raw)
+    private fun renderStrip(graphics: GuiGraphicsExtractor, elapsed: Long, cy: Int) {
+        if (strip.isEmpty()) return
+        val raw = (elapsed.toFloat() / totalSpinMs.toFloat()).coerceIn(0f, 1f)
+        val eased = easeOutQuart(raw)
 
-        // Spread across the full screen width.
-        val x = (width * (index + 1)) / 4
-        val reel = reels[index]
-        val totalPx = (reel.size - 2) * rowHeight
-        val scrollY = totalPx * eased
-        val baseIndex = (scrollY / rowHeight).toInt()
+        val target = winNeedlePx() - width / 2f
+        val scrollX = target * eased
 
-        if (elapsed in 0..spinMs && baseIndex > lastScrollIndex[index]) {
-            if (lastScrollIndex[index] != -1) playTick()
-            lastScrollIndex[index] = baseIndex
+        // Needle index drives tick sounds: one tick per cell passing center.
+        val needleIdx = ((scrollX + width / 2f) / stride).toInt()
+        if (elapsed in 0..totalSpinMs && needleIdx > lastNeedleIndex) {
+            if (lastNeedleIndex != -1) playTick()
+            lastNeedleIndex = needleIdx
         }
-        if (elapsed >= spinMs && !reelStopped[index]) {
-            reelStopped[index] = true
-            playStop(index)
-            if (reelStopped.all { it }) playFanfare()
+        if (elapsed >= totalSpinMs && !stopped) {
+            stopped = true
+            playStop()
+            playFanfare()
         }
 
-        val pixelOffset = (scrollY % rowHeight).toInt()
-        val half = spriteSize / 2 + 4
-        // Winning-line backdrop behind the center row.
-        graphics.fill(x - half, cy - half, x + half, cy + half, 0x40FFFFFF)
+        val stripH = cellSize + 16
+        val top = cy - stripH / 2
+        val bottom = cy + stripH / 2
+        val cx = width / 2
 
-        for (offset in -1..1) {
-            val target = (baseIndex + offset).coerceIn(0, reel.size - 1)
-            val drop = reel[target]
-            val itemY = cy + pixelOffset - (offset * rowHeight)
-            drawSprite(graphics, drop, x - half + 4, itemY - half + 4)
+        // Panel backdrop + top/bottom rails, CSGO-style.
+        graphics.fill(0, top, width, bottom, 0xC0141416.toInt())
+        val rail = 0xFFFFD700.toInt()
+        graphics.fill(0, top, width, top + 1, 0x40FFFFFF)
+        graphics.fill(0, bottom - 1, width, bottom, 0x40FFFFFF)
+
+        val cellTop = top + 6
+        val cellBottom = bottom - 6
+        for (i in strip.indices) {
+            val cellLeft = (i * stride + cellSize / 2f - scrollX - cellSize / 2f).toInt()
+            if (cellLeft + cellSize < -stride || cellLeft > width + stride) continue
+            if (i == winStartIdx) {
+                drawSharedCell(graphics, cellLeft, cellTop, cellBottom, cy, strip[i], highlight = stopped)
+                continue
+            }
+            drawSharedCell(graphics, cellLeft, cellTop, cellBottom, cy, strip[i], highlight = false)
+        }
+
+        // Side fade so focus stays center.
+        graphics.fill(0, top, 56, bottom, 0xAA000000.toInt())
+        graphics.fill(width - 56, top, width, bottom, 0xAA000000.toInt())
+
+        // Center needle.
+        graphics.fill(cx - 1, top - 10, cx + 1, bottom + 10, rail)
+        graphics.fill(cx - 5, top - 14, cx + 5, top - 10, rail)
+        graphics.fill(cx - 5, bottom + 10, cx + 5, bottom + 14, rail)
+    }
+
+    /**
+     * Picks where the needle stops: a random point inside the single winner
+     * cell. A small margin keeps the needle visibly inside the box rather
+     * than exactly on its edge.
+     */
+    private fun rollNeedleOffset() {
+        val rng = ThreadLocalRandom.current()
+        val margin = 6f
+        needleOffsetPx = margin + rng.nextFloat() * (cellSize - 2 * margin)
+    }
+
+    private fun winNeedlePx(): Float {
+        if (strip.isEmpty() || winners.isEmpty()) return 0f
+        return winStartIdx * stride + needleOffsetPx
+    }
+
+    /**
+     * Draws 1-3 drops sharing one box: singles render full-size, pairs sit
+     * diagonal (top-left + bottom-right, like stacked loot), triples share a
+     * row. The rarity bar splits into one segment per drop.
+     */
+    private fun drawSharedCell(
+        graphics: GuiGraphicsExtractor,
+        cellLeft: Int,
+        cellTop: Int,
+        cellBottom: Int,
+        cy: Int,
+        drops: List<VampireDrop>,
+        highlight: Boolean,
+    ) {
+        val first = drops.firstOrNull() ?: return
+        val bg = if (highlight) 0xFF3A3524.toInt() else 0xFF232229.toInt()
+        graphics.fill(cellLeft, cellTop, cellLeft + cellSize, cellBottom, bg)
+
+        val n = drops.size
+        when {
+            n <= 1 -> {
+                drawSprite(graphics, first, cellLeft + (cellSize - spriteSize) / 2, cy - spriteSize / 2)
+            }
+            n == 2 -> {
+                val size = 30
+                val lift = 9
+                drawSprite(graphics, drops[0], cellLeft + 5, cy - size / 2 - lift, size)
+                drawSprite(graphics, drops[1], cellLeft + cellSize - 5 - size, cy - size / 2 + lift, size)
+            }
+            else -> {
+                val size = ((cellSize - 12 - (n - 1) * 4) / n).coerceAtLeast(12)
+                val totalW = n * size + (n - 1) * 4
+                var sx = cellLeft + (cellSize - totalW) / 2
+                val sy = cy - size / 2
+                for (drop in drops) {
+                    drawSprite(graphics, drop, sx, sy, size)
+                    sx += size + 4
+                }
+            }
+        }
+
+        // Split rarity bar: one segment per drop.
+        for (j in drops.indices) {
+            val segLeft = cellLeft + (j * cellSize) / n
+            val segRight = if (j == n - 1) cellLeft + cellSize else cellLeft + ((j + 1) * cellSize) / n
+            graphics.fill(segLeft, cellBottom - 4, segRight, cellBottom, drops[j].rarityColor)
+        }
+
+        if (highlight) {
+            val gold = 0xFFFFD700.toInt()
+            val b = 2
+            graphics.fill(cellLeft - b, cellTop - b, cellLeft + cellSize + b, cellTop, gold)
+            graphics.fill(cellLeft - b, cellBottom, cellLeft + cellSize + b, cellBottom + b, gold)
+            graphics.fill(cellLeft - b, cellTop, cellLeft, cellBottom, gold)
+            graphics.fill(cellLeft + cellSize, cellTop, cellLeft + cellSize + b, cellBottom, gold)
         }
     }
 
     private fun drawSprite(graphics: GuiGraphicsExtractor, drop: VampireDrop, x: Int, y: Int) {
+        drawSprite(graphics, drop, x, y, spriteSize)
+    }
+
+    private fun drawSprite(graphics: GuiGraphicsExtractor, drop: VampireDrop, x: Int, y: Int, size: Int) {
         val (texW, texH) = texSize(drop)
+        // The wiki sprites are 160-300px; blit's width/height select a UV
+        // region (not a scaled draw), so draw the full texture and scale the
+        // pose down to the target size instead of sampling just the top-left.
+        graphics.pose().pushMatrix()
+        graphics.pose().translate(x.toFloat(), y.toFloat())
+        graphics.pose().scale(size / texW.toFloat(), size / texH.toFloat())
         graphics.blit(
             RenderPipelines.GUI_TEXTURED,
             drop.textureId,
-            x,
-            y,
+            0,
+            0,
             0.0f,
             0.0f,
-            spriteSize,
-            spriteSize,
+            texW,
+            texH,
             texW,
             texH,
             0xFFFFFFFF.toInt(),
         )
-        // Both bundles share one sprite; mark The One with a gold border.
-        if (drop == VampireDrop.THE_ONE) {
-            val gold = 0xFFFFAA00.toInt()
-            val b = 2
-            graphics.fill(x - b, y - b, x + spriteSize + b, y, gold)
-            graphics.fill(x - b, y + spriteSize, x + spriteSize + b, y + spriteSize + b, gold)
-            graphics.fill(x - b, y, x, y + spriteSize, gold)
-            graphics.fill(x + spriteSize, y, x + spriteSize + b, y + spriteSize, gold)
-        }
+        graphics.pose().popMatrix()
     }
 
     /**
@@ -247,7 +352,7 @@ class BossDropsSpinner(
     private fun playTick() {
         if (!playSounds) return
         val now = System.currentTimeMillis()
-        if (now - lastSoundAt < 60L) return
+        if (now - lastSoundAt < 50L) return
         lastSoundAt = now
         val sound = if (ThreadLocalRandom.current().nextBoolean()) {
             SoundEvents.VAULT_INSERT_ITEM
@@ -259,10 +364,10 @@ class BossDropsSpinner(
         )
     }
 
-    private fun playStop(index: Int) {
+    private fun playStop() {
         if (!playSounds) return
         Minecraft.getInstance().soundManager.play(
-            SimpleSoundInstance.forUI(SoundEvents.ITEM_PICKUP, 1.0f + (index * 0.2f), 0.8f),
+            SimpleSoundInstance.forUI(SoundEvents.ITEM_PICKUP, 1.0f, 0.8f),
         )
     }
 
@@ -270,14 +375,14 @@ class BossDropsSpinner(
         if (!playSounds || fanfarePlayed) return
         fanfarePlayed = true
         // Seals-only is the common case: keep it quiet.
-        if (finals.all { it == VampireDrop.COVEN_SEAL }) return
+        if (winners.all { it == VampireDrop.COVEN_SEAL }) return
         Minecraft.getInstance().soundManager.play(
             SimpleSoundInstance.forUI(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.0f, 0.8f),
         )
     }
 
     private fun header(): Component {
-        val best = finals.minBy { it.rank }
+        val best = winners.minBy { it.rank }
         val text = when (best) {
             VampireDrop.SANGRIA -> "CRAZY RARE DROP!"
             VampireDrop.THE_ONE,
@@ -291,7 +396,7 @@ class BossDropsSpinner(
     }
 
     private fun footer(): Component {
-        val distinct = finals.distinct()
+        val distinct = winners.distinct()
         val message = Component.empty()
         distinct.forEachIndexed { i, drop ->
             if (i > 0) message.append(Component.literal(" + ").withStyle(net.minecraft.ChatFormatting.GRAY))
@@ -301,13 +406,17 @@ class BossDropsSpinner(
     }
 
     private fun allStopped(): Boolean =
-        reels.isNotEmpty() && (System.currentTimeMillis() - startTime) >= totalSpinMs
+        strip.isNotEmpty() && (System.currentTimeMillis() - startTime) >= totalSpinMs
 
     companion object {
         /**
          * Maps 1-3 winning drops onto 3 reels. Single drop -> triple match.
          * Two drops (Main + Extra) -> [first, first, second] so both real
          * drops are visible. Three -> as-is by rarity.
+         *
+         * Kept for compatibility; the case-opening strip uses
+         * [VampireDrop.resolveWinningDrops] directly so 1-3 drops land as one
+         * adjacent cluster on a single line.
          */
         fun resolveFinals(winning: List<VampireDrop>): List<VampireDrop> {
             val drops = VampireDrop.resolveWinningDrops(winning)
@@ -319,15 +428,47 @@ class BossDropsSpinner(
         }
 
         fun randomDrop(): VampireDrop {
-            val total = VampireDrop.entries.sumOf { it.weight }
+            // Filler odds mirror real per-kill outcome chances (T5), not the
+            // raw loot-table weights (those are per-pool: Main totals 67,
+            // seal is a guaranteed Token, sangria a 0.01% side roll).
+            val total = VampireDrop.entries.sumOf { it.fillerWeight }
             var r = ThreadLocalRandom.current().nextDouble(total)
             for (drop in VampireDrop.entries) {
-                r -= drop.weight
+                r -= drop.fillerWeight
                 if (r <= 0.0) return drop
             }
             return VampireDrop.COVEN_SEAL
         }
 
+        /** Filler cells are usually singles, rarely doubles for strip variety. */
+        fun randomFillerCell(): MutableList<VampireDrop> =
+            if (ThreadLocalRandom.current().nextDouble() < 0.07) {
+                // Doubles are strictly Main + rune: two Mains (or two
+                // Quantums) can never drop together on a real kill.
+                mutableListOf(randomMain(), VampireDrop.SOULTWIST)
+            } else {
+                mutableListOf(randomDrop())
+            }
+
+        /** Weighted pick among Main-pool drops for legal filler pairs. */
+        private fun randomMain(): VampireDrop {
+            val mains = VampireDrop.entries.filter { it.pool == VampireDrop.Pool.MAIN }
+            val total = mains.sumOf { it.fillerWeight }
+            var r = ThreadLocalRandom.current().nextDouble(total)
+            for (drop in mains) {
+                r -= drop.fillerWeight
+                if (r <= 0.0) return drop
+            }
+            return VampireDrop.QUANTUM
+        }
+
         fun easeOutQuad(t: Float): Float = 1f - (1f - t) * (1f - t)
+
+        fun easeOutQuart(t: Float): Float {
+            val u = 1f - t
+            return 1f - u * u * u * u
+        }
+
+        fun rarityColor(drop: VampireDrop): Int = drop.rarityColor
     }
 }

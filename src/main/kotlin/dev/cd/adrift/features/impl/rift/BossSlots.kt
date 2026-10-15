@@ -7,6 +7,7 @@ import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
+import com.odtheking.odin.utils.modMessage
 import com.odtheking.odin.utils.skyblock.Island
 import com.odtheking.odin.utils.skyblock.LocationUtils
 import dev.cd.adrift.events.SlayerEvent
@@ -15,10 +16,11 @@ import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.item.ItemEntity
+import java.util.concurrent.ThreadLocalRandom
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Opens a slot-machine reveal when your vampire boss dies. The reels land on
+ * Opens a CSGO-style case opening reveal when your vampire boss dies. The strip lands on
  * the actual drops parsed from chat; when nothing rare drops they land on
  * Coven Seal (the guaranteed token).
  *
@@ -29,7 +31,7 @@ import kotlin.time.Duration.Companion.seconds
 object BossSlots : Module(
     "Boss Slots",
     category = Category.RIFT,
-    description = "Slot machine reveal for vampire boss drops",
+    description = "CSGO-style case opening reveal for vampire boss drops",
 ) {
     private val spinDuration by NumberSetting(
         "Spin Duration",
@@ -37,7 +39,7 @@ object BossSlots : Module(
         min = 1.0,
         max = 10.0,
         increment = 0.5,
-        desc = "Base reel spin time in seconds",
+        desc = "Base case spin time in seconds",
     )
     private val hideDrops by BooleanSetting(
         "Hide Drop Messages",
@@ -176,4 +178,89 @@ object BossSlots : Module(
         if (messages.isEmpty()) return
         messages.forEach { mc.gui.chat.addClientSystemMessage(it) }
     }
+
+    // ---- Simulate command (test hook) ----
+
+    /** Opens the case animation with the given drops, anywhere. */
+    fun simulate(drops: List<VampireDrop>) {
+        mc.execute {
+            if (spinning) {
+                modMessage("Case roll already in progress.")
+                return@execute
+            }
+            if (mc.screen != null) {
+                modMessage("Close the current screen before simulating a roll.")
+                return@execute
+            }
+            spinning = true
+            val spinner = BossDropsSpinner(drops, spinDuration.seconds, playSounds) {
+                spinning = false
+                collecting = false
+                screen = null
+            }
+            screen = spinner
+            mc.setScreen(spinner)
+        }
+    }
+
+    /**
+     * Parses `/simulate` args. Matches the whole input against drop keys so
+     * multi-word names ("the one", "coven seal") work, e.g.
+     * `/simulate the_one`, `/simulate quantum soultwist`, `/simulate sangria`.
+     * Blank or "random" rolls random loot.
+     */
+    fun simulate(rawArgs: String) {
+        val lower = rawArgs.lowercase().replace("_", " ").replace("-", " ").trim()
+        if (lower.isBlank() || lower == "random") {
+            simulateRandom()
+            return
+        }
+        val found = VampireDrop.entries.filter { drop ->
+            drop.chatKeys.any { lower.contains(it) } ||
+                lower.contains(drop.name.lowercase().replace("_", " ")) ||
+                DROP_ALIASES[drop].orEmpty().any { lower.contains(it) }
+        }
+        if (found.isEmpty()) {
+            modMessage("Unknown drop(s): \"$rawArgs\". Try quantum, the_one, burger, unfanged, guardian, bubba, fangtastic, soultwist, sangria, seal — or just /simulate for a random roll.")
+            return
+        }
+        simulate(found)
+    }
+
+    /** Random realistic-ish roll: usually seals, sometimes a main, often paired with a rune. */
+    fun simulateRandom() {
+        val rng = ThreadLocalRandom.current()
+        val drops = mutableListOf<VampireDrop>()
+        if (rng.nextDouble() < 0.35) {
+            val mains = VampireDrop.entries.filter { it.pool == VampireDrop.Pool.MAIN }
+            val total = mains.sumOf { it.weight }
+            var r = rng.nextDouble(total)
+            for (drop in mains) {
+                r -= drop.weight
+                if (r <= 0.0) {
+                    drops.add(drop)
+                    break
+                }
+            }
+            // Doubles: a main drop is often paired with a rune.
+            if (rng.nextDouble() < 0.30) drops.add(VampireDrop.SOULTWIST)
+        } else if (rng.nextDouble() < 0.10) {
+            drops.add(VampireDrop.SOULTWIST)
+        }
+        if (rng.nextDouble() < 0.03) drops.add(VampireDrop.SANGRIA)
+        simulate(drops)
+    }
 }
+
+private val DROP_ALIASES: Map<VampireDrop, List<String>> = mapOf(
+    VampireDrop.SANGRIA to listOf("dye"),
+    VampireDrop.THE_ONE to listOf("the one"),
+    VampireDrop.BURGER to listOf("burger"),
+    VampireDrop.UNFANGED to listOf("part"),
+    VampireDrop.GUARDIAN to listOf("lucky block", "block"),
+    VampireDrop.BUBBA to listOf("blister"),
+    VampireDrop.FANGTASTIC to listOf("fangtastic", "chocolate", "chip"),
+    VampireDrop.QUANTUM to listOf("bundle", "book"),
+    VampireDrop.SOULTWIST to listOf("rune"),
+    VampireDrop.COVEN_SEAL to listOf("seal"),
+)
