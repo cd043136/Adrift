@@ -6,4 +6,5 @@ import net.minecraft.world.entity.Entity
 interface SlayerEvent : Event {
 
     class Spawn(val boss: Entity) : SlayerEvent
+    class Death : SlayerEvent
 }

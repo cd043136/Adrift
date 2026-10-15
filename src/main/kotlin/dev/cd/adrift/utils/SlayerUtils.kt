@@ -105,11 +105,13 @@ object SlayerUtils {
             }
         }
 
-        // boss death check
+        // boss death check (isDeadOrDying fires on the death animation,
+        // isAlive flips once the entity is removed)
         boss?.let {
-            if (!it.isAlive) {
+            if (it.isDeadOrDying || !it.isAlive) {
                 this.boss = null
                 this.timer = null
+                SlayerEvent.Death().postAndCatch()
             }
         }
     }
