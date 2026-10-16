@@ -5,6 +5,7 @@
 
 build/
 run/
+bin/
 
 docs/
 libraries/
