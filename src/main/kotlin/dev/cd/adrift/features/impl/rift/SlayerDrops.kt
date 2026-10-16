@@ -103,7 +103,11 @@ object SlayerDrops : Module(
                 if (ValuableDrop.BUNDLE in matched && displayRenamed)
                     text = text.replace(ValuableDrop.BUNDLE.plain, ValuableDrop.BUNDLE.renameTo!!)
                 mc.keyboardHandler.clipboard = text
-                modMessage("Copied to clipboard")
+                // Skip the confirmation while BossSlots is hiding drops: the
+                // message itself would spoil that a rare drop just happened.
+                if (!BossSlots.isSuppressingChat()) {
+                    modMessage("Copied to clipboard")
+                }
             }
         }
     }
