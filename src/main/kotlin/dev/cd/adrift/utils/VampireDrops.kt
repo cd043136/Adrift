@@ -1,6 +1,9 @@
 package dev.cd.adrift.utils
 
 import net.minecraft.ChatFormatting
+import net.minecraft.network.chat.Component
+import net.minecraft.network.chat.Style
+import net.minecraft.network.chat.TextColor
 import net.minecraft.resources.Identifier
 
 /**
@@ -173,6 +176,9 @@ enum class VampireDrop(
         get() = Identifier.fromNamespaceAndPath("adrift", "textures/gui/boss_slots/$texture")
 
     companion object {
+        private val THE_ONE_COLOR: TextColor? = TextColor.fromLegacyFormat(ChatFormatting.GOLD)
+        private val QUANTUM_COLOR: TextColor? = TextColor.fromLegacyFormat(ChatFormatting.GREEN)
+
         /**
          * Matches one chat line (e.g. "VERY RARE DROP! (McGrubber's Burger) ...")
          * to a drop, or null when the line is not a boss drop.
@@ -180,6 +186,10 @@ enum class VampireDrop(
          * Both bundle drops show as "Enchanted Book Bundle" in chat; the
          * specific enchant ("The One" vs "Quantum") disambiguates. When neither
          * is present the line is assumed to be Quantum (far more common).
+         *
+         * NOTE: bare bundle text cannot distinguish The One (gold) from Quantum
+         * (green) — use [fromChatMessage] with the chat [Component] so color
+         * disambiguates, same approach as SlayerDrops rename.
          */
         fun fromChatLine(line: String): VampireDrop? {
             val lower = line.lowercase()
@@ -190,6 +200,76 @@ enum class VampireDrop(
             if (match != null) return match
             if (lower.contains("enchanted book bundle")) return QUANTUM
             return null
+        }
+
+        /**
+         * Parses a full chat packet (plain [message] + rich [component]) into
+         * drops. Same plain-text keys as [fromChatLine], except bare
+         * "Enchanted Book Bundle" lines are disambiguated via component color
+         * (gold -> THE_ONE, green -> QUANTUM), mirroring SlayerDrops'
+         * `ValuableDrop.BUNDLE.matches`.
+         */
+        fun fromChatMessage(message: String, component: Component): List<VampireDrop> {
+            if (!message.lowercase().contains("rare drop!")) return emptyList()
+            return message.split("\n").mapNotNull { line ->
+                val lower = line.lowercase()
+                if (!lower.contains("rare drop!")) return@mapNotNull null
+                val match = entries.firstOrNull { drop ->
+                    drop.chatKeys.any { lower.contains(it) }
+                }
+                if (match != null) return@mapNotNull match
+                if (lower.contains("enchanted book bundle")) {
+                    return@mapNotNull bundleDropFromComponent(component)
+                }
+                null
+            }
+        }
+
+        /**
+         * Disambiguates the shared "Enchanted Book Bundle" sprite/name via chat
+         * color: The One renders gold (LEGENDARY), Quantum renders green
+         * (UNCOMMON). Falls back to QUANTUM when no colored piece is found to
+         * preserve the old far-more-common assumption.
+         */
+        fun bundleDropFromComponent(component: Component): VampireDrop {
+            val bundlePieces = component.toFlatList(Style.EMPTY)
+                .filter { it.string.contains("Enchanted Book Bundle") }
+            if (bundlePieces.any { it.style.color == THE_ONE_COLOR }) return THE_ONE
+            if (bundlePieces.any { it.style.color == QUANTUM_COLOR }) return QUANTUM
+            return QUANTUM
+        }
+
+        /**
+         * True for RNG meter reselection lines, e.g.
+         * "RNG METER! Reselected the Unfanged Vampire Part for Vampire Slayer!
+         * CLICK HERE to select a new drop!".
+         *
+         * These race ahead of death detection (tick-based), so callers must
+         * check before the normal collecting/spinning guard or they always
+         * leak past the hider.
+         */
+        fun isRngMeterMessage(message: String): Boolean {
+            val lower = message.lowercase()
+            return lower.contains("rng meter") &&
+                lower.contains("reselect") &&
+                lower.contains("vampire slayer")
+        }
+
+        /**
+         * Parses RNG meter reselection lines into drops. Same display-name /
+         * chat-key matching as rare drops, plus bundle color disambiguation.
+         * Returns empty when the packet contains no RNG meter line.
+         */
+        fun fromRngMeterMessage(message: String, component: Component): List<VampireDrop> {
+            return message.split("\n").mapNotNull { line ->
+                if (!isRngMeterMessage(line)) return@mapNotNull null
+                val lower = line.lowercase()
+                entries.firstOrNull { lower.contains(it.displayName.lowercase()) }
+                    ?: entries.firstOrNull { drop ->
+                        drop.chatKeys.any { lower.contains(it) }
+                    }
+                    ?: if (lower.contains("enchanted book bundle")) bundleDropFromComponent(component) else null
+            }
         }
 
         /**

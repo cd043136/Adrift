@@ -60,9 +60,11 @@ object BossSlots : Module(
 
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
     private const val MAX_HIDDEN = 50
+    private const val COLLECT_TIMEOUT_MS = 15_000L
     private val SPIN_DURATION = 8.seconds
 
     private var collecting = false
+    private var collectingSince = 0L
     private var spinning = false
     private var screen: BossDropsSpinner? = null
 
@@ -152,8 +154,7 @@ object BossSlots : Module(
                 return@on
             }
 
-            val lines = message.split("\n")
-            val found = lines.mapNotNull(VampireDrop::fromChatLine)
+            val found = VampireDrop.fromChatMessage(message, component)
             if (found.isNotEmpty()) {
                 pendingDrops.addAll(found)
                 // Drops arrive during the animation; steer the reels that are
