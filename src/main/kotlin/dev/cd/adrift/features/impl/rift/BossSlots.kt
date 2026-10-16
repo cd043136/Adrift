@@ -124,13 +124,29 @@ object BossSlots : Module(
             if (LocationUtils.currentArea != Island.Rift) return@on
             pendingDrops.clear()
             hidden.clear()
+            collectingSince = 0L
         }
 
         on<SlayerEvent.Death> {
             if (!enabled || LocationUtils.currentArea != Island.Rift) return@on
-            if (spinning || mc.screen != null) return@on
-            pendingDrops.clear()
-            hidden.clear()
+            if (spinning) return@on
+            if (mc.screen != null) {
+                // Reveal blocked (chest/chat open): resend any pre-buffered
+                // RNG meter lines so they are never lost.
+                if (collecting) {
+                    collecting = false
+                    collectingSince = 0L
+                    drainHidden()
+                    pendingDrops.clear()
+                }
+                return@on
+            }
+            // Don't wipe pre-buffered RNG meter lines that arrived just
+            // before death detection (tick-based, so chat races ahead).
+            // Spawn already cleared at fight start; openScreen clears after use.
+            if (!collecting) {
+                collectingSince = System.currentTimeMillis()
+            }
             collecting = true
             println("[Adrift] BossSlots: boss died, revealing immediately")
             mc.execute { openScreen() }
@@ -138,15 +154,57 @@ object BossSlots : Module(
 
         on<TickEvent.Server> {
             inRiftCached = LocationUtils.currentArea == Island.Rift
+            if (collecting && !spinning && collectingSince != 0L &&
+                System.currentTimeMillis() - collectingSince > COLLECT_TIMEOUT_MS
+            ) {
+                // RNG meter pre-buffer never led to a reveal (false positive
+                // or blocked screen): resend so nothing is lost.
+                collecting = false
+                collectingSince = 0L
+                drainHidden()
+                pendingDrops.clear()
+            }
         }
 
         on<MessageEvent.Chat> {
             if (!enabled || LocationUtils.currentArea != Island.Rift) return@on
 
+            // RNG meter reselection lines race ahead of death detection, so
+            // they arrive before collecting starts and would otherwise always
+            // leak. Intercept early when hide is active, e.g.
+            // "RNG METER! Reselected the Unfanged Vampire Part for Vampire
+            // Slayer! CLICK HERE to select a new drop!".
+            val rngFound = VampireDrop.fromRngMeterMessage(message, component)
+            if (rngFound.isNotEmpty() || VampireDrop.isRngMeterMessage(message)) {
+                if (rngFound.isNotEmpty()) {
+                    pendingDrops.addAll(rngFound)
+                    // Drops arrive during the animation; steer the reels that are
+                    // still spinning toward the real result.
+                    val active = screen
+                    if (active != null) {
+                        val drops = pendingDrops.toList()
+                        mc.execute { active.updateWinningDrops(drops) }
+                    }
+                }
+                if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
+                    cancel()
+                    hidden.add(component)
+                    // Start collecting early so following drop chat stays
+                    // hidden too; Death preserves this buffer (no wipe) and
+                    // the tick timeout resends if no reveal follows.
+                    if (!collecting && !spinning) {
+                        collecting = true
+                        collectingSince = System.currentTimeMillis()
+                    }
+                }
+                return@on
+            }
+
             if (!collecting && !spinning) return@on
 
             if (message.contains(QUEST_FAILED)) {
                 collecting = false
+                collectingSince = 0L
                 pendingDrops.clear()
                 // No spinner to do the resend; drain now so nothing is lost.
                 // The fail line itself stays visible.
@@ -179,6 +237,7 @@ object BossSlots : Module(
 
         on<LevelEvent.Load> {
             collecting = false
+            collectingSince = 0L
             spinning = false
             screen = null
             inRiftCached = false
@@ -200,6 +259,7 @@ object BossSlots : Module(
         if (LocationUtils.currentArea != Island.Rift) {
             pendingDrops.clear()
             hidden.clear()
+            collectingSince = 0L
             return
         }
         if (mc.player == null) return
@@ -209,6 +269,7 @@ object BossSlots : Module(
             drainHidden()
             pendingDrops.clear()
             collecting = false
+            collectingSince = 0L
             return
         }
         val wins = VampireDrop.resolveWinningDrops(pendingDrops.toList())
@@ -218,6 +279,7 @@ object BossSlots : Module(
             val count = drainHidden()
             spinning = false
             collecting = false
+            collectingSince = 0L
             screen = null
             println("[Adrift] BossSlots: reveal finished, re-sent $count hidden message(s)")
         }
@@ -257,6 +319,7 @@ object BossSlots : Module(
                 drainHidden()
                 spinning = false
                 collecting = false
+                collectingSince = 0L
                 screen = null
             }
             screen = spinner
