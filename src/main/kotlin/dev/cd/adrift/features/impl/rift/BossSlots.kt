@@ -171,27 +171,39 @@ object BossSlots : Module(
 
             // RNG meter reselection lines race ahead of death detection, so
             // they arrive before collecting starts and would otherwise always
-            // leak. Intercept early when hide is active, e.g.
+            // leak. Hide only — never collect (drops come from RARE DROP /
+            // WOW lines), e.g.
             // "RNG METER! Reselected the Unfanged Vampire Part for Vampire
             // Slayer! CLICK HERE to select a new drop!".
-            val rngFound = VampireDrop.fromRngMeterMessage(message, component)
-            if (rngFound.isNotEmpty() || VampireDrop.isRngMeterMessage(message)) {
-                if (rngFound.isNotEmpty()) {
-                    pendingDrops.addAll(rngFound)
-                    // Drops arrive during the animation; steer the reels that are
-                    // still spinning toward the real result.
-                    val active = screen
-                    if (active != null) {
-                        val drops = pendingDrops.toList()
-                        mc.execute { active.updateWinningDrops(drops) }
-                    }
-                }
+            if (VampireDrop.isRngMeterMessage(message)) {
                 if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
                     cancel()
                     hidden.add(component)
                     // Start collecting early so following drop chat stays
                     // hidden too; Death preserves this buffer (no wipe) and
                     // the tick timeout resends if no reveal follows.
+                    if (!collecting && !spinning) {
+                        collecting = true
+                        collectingSince = System.currentTimeMillis()
+                    }
+                }
+                return@on
+            }
+
+            // Sangria Dye has no RARE DROP line — only the WOW line, e.g.
+            // "WOW! [MVP+] Player found a Sangria Dye!". Collect ours before
+            // the guard since it can also race death detection.
+            val dyeFound = VampireDrop.fromDyeMessage(message, mc.player?.gameProfile?.name)
+            if (dyeFound.isNotEmpty()) {
+                pendingDrops.addAll(dyeFound)
+                val active = screen
+                if (active != null) {
+                    val drops = pendingDrops.toList()
+                    mc.execute { active.updateWinningDrops(drops) }
+                }
+                if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
+                    cancel()
+                    hidden.add(component)
                     if (!collecting && !spinning) {
                         collecting = true
                         collectingSince = System.currentTimeMillis()

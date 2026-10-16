@@ -246,7 +246,8 @@ enum class VampireDrop(
          *
          * These race ahead of death detection (tick-based), so callers must
          * check before the normal collecting/spinning guard or they always
-         * leak past the hider.
+         * leak past the hider. Hidden only — never collected (drops come
+         * from RARE DROP / WOW lines).
          */
         fun isRngMeterMessage(message: String): Boolean {
             val lower = message.lowercase()
@@ -255,20 +256,21 @@ enum class VampireDrop(
                 lower.contains("vampire slayer")
         }
 
+        private val DYE_REGEX =
+            Regex("""^WOW! (?:\[[^\]]+\] )?(\w{1,16}) found ?a? Sangria Dye(?: #\d+)?!$""")
+
         /**
-         * Parses RNG meter reselection lines into drops. Same display-name /
-         * chat-key matching as rare drops, plus bundle color disambiguation.
-         * Returns empty when the packet contains no RNG meter line.
+         * Parses Sangria Dye WOW lines, e.g. "WOW! [MVP+] Player found a
+         * Sangria Dye!". Dye has no RARE DROP line, so this is the only
+         * signal. Returns [SANGRIA] only when the finder is our own name;
+         * other players' dyes are ignored.
          */
-        fun fromRngMeterMessage(message: String, component: Component): List<VampireDrop> {
+        fun fromDyeMessage(message: String, ownName: String?): List<VampireDrop> {
+            if (ownName == null) return emptyList()
             return message.split("\n").mapNotNull { line ->
-                if (!isRngMeterMessage(line)) return@mapNotNull null
-                val lower = line.lowercase()
-                entries.firstOrNull { lower.contains(it.displayName.lowercase()) }
-                    ?: entries.firstOrNull { drop ->
-                        drop.chatKeys.any { lower.contains(it) }
-                    }
-                    ?: if (lower.contains("enchanted book bundle")) bundleDropFromComponent(component) else null
+                val match = DYE_REGEX.matchEntire(line.trim()) ?: return@mapNotNull null
+                if (!match.groupValues[1].equals(ownName, ignoreCase = true)) return@mapNotNull null
+                SANGRIA
             }
         }
 
