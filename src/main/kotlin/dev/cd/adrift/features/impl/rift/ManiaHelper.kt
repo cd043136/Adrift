@@ -176,7 +176,7 @@ object ManiaHelper : Module(
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
 
             for (i in 0 until ManiaGeometry.offsetCount) {
-                val expected = s.expectedBlock(s.columnBand[i]) ?: continue
+                val expected = s.expectedBlock(ManiaGeometry.offsetBand[i]) ?: continue
                 if (greenOnly && expected != ManiaBlock.GREEN) continue
                 val x = s.centreX + ManiaGeometry.offsetX[i]
                 val z = s.centreZ + ManiaGeometry.offsetZ[i]

@@ -2,23 +2,16 @@ package dev.cd.adrift.features.impl.rift
 
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.BAND_COUNT
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.BORDER
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.CAPTURE_RADIUS
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.CORE
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.FIT_RANGE
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.FOREIGN_RADIUS
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.FOREIGN_RADIUS_SQ
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.ORBIT_COUNT
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.OUTSIDE
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.PATTERN_RADIUS_SQ
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.UNKNOWN
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.bandName
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.formulaBand
+import dev.cd.adrift.features.impl.rift.ManiaGeometry.bandOf
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.isRing
+import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetBand
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetCount
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetFormula
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetOrbit
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetX
-import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetZ
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
@@ -58,7 +51,6 @@ internal object ManiaGeometry {
     const val BORDER = 5
     const val OUTSIDE = 6
     const val BAND_COUNT = 7
-    const val UNKNOWN = -1
 
     const val PATTERN_RADIUS = 15
     const val PATTERN_RADIUS_SQ = PATTERN_RADIUS * PATTERN_RADIUS
@@ -69,15 +61,14 @@ internal object ManiaGeometry {
     const val FOREIGN_MARGIN = 4
     const val CAPTURE_RADIUS = FOREIGN_RADIUS + FIT_RANGE + FOREIGN_MARGIN
     const val CAPTURE_RADIUS_SQ = CAPTURE_RADIUS * CAPTURE_RADIUS
-    const val ORBIT_COUNT = (PATTERN_RADIUS + 1) * (PATTERN_RADIUS + 1)
 
     private const val SIDE = 2 * PATTERN_RADIUS + 1
     private val lookup = IntArray(SIDE * SIDE) { -1 }
 
     val offsetX: IntArray
     val offsetZ: IntArray
-    val offsetFormula: IntArray
-    val offsetOrbit: IntArray
+    /** Band per offset index. */
+    val offsetBand: IntArray
     val offsetCount: Int
 
     init {
@@ -92,8 +83,7 @@ internal object ManiaGeometry {
         offsetX = xs.toIntArray()
         offsetZ = zs.toIntArray()
         offsetCount = offsetX.size
-        offsetFormula = IntArray(offsetCount) { formulaBand(offsetX[it], offsetZ[it]) }
-        offsetOrbit = IntArray(offsetCount) { orbitIndex(offsetX[it], offsetZ[it]) }
+        offsetBand = IntArray(offsetCount) { bandOf(offsetX[it], offsetZ[it]) }
     }
 
     /** Offset index of `(dx, dz)` relative to the centre, or -1 if outside the pattern radius. */
@@ -102,41 +92,30 @@ internal object ManiaGeometry {
         return lookup[(dx + PATTERN_RADIUS) * SIDE + dz + PATTERN_RADIUS]
     }
 
-    /** Shared index for the 8 symmetric images `(±dx, ±dz)`, `(±dz, ±dx)`. */
-    fun orbitIndex(dx: Int, dz: Int): Int {
-        val a = abs(dx)
-        val b = abs(dz)
-        return max(a, b) * (PATTERN_RADIUS + 1) + minOf(a, b)
-    }
-
-    /** Hypothesised radii (strict `d < 2, 5, 7.5, 10, 12.5`, border to 14.5), compared as `4·d² < (2r)²`. */
-    fun formulaBand(dx: Int, dz: Int): Int {
-        val q = 4 * (dx * dx + dz * dz)
+    /**
+     * The mania pattern is a fixed radial template around the centre column. Thresholds are the largest squared
+     * distances observed per band in logged manias; no column has a squared distance between one band's limit and
+     * the next band's smallest.
+     */
+    fun bandOf(dx: Int, dz: Int): Int {
+        val d2 = dx * dx + dz * dz
         return when {
-            q < 16 -> CORE
-            q < 100 -> 1
-            q < 225 -> 2
-            q < 400 -> 3
-            q < 625 -> 4
-            q <= 841 -> BORDER
+            d2 <= 2 -> CORE
+            d2 <= 20 -> 1
+            d2 <= 53 -> 2
+            d2 <= 98 -> 3
+            d2 <= 157 -> 4
+            d2 <= 197 -> BORDER
             else -> OUTSIDE
         }
     }
 
     fun isRing(band: Int) = band in 1..4
-
-    fun bandName(band: Int) = when (band) {
-        CORE -> "core"
-        BORDER -> "border"
-        OUTSIDE -> "outside"
-        UNKNOWN -> "unknown"
-        else -> "ring $band"
-    }
 }
 
 /**
- * Model of one mania of our own boss. Fed with per-tick block batches; owns the centre fit, per-cycle phase state and
- * the learned column → band map. Main thread only.
+ * Model of one mania of our own boss. Fed with per-tick block batches; owns the centre fit and per-cycle phase state.
+ * Main thread only.
  */
 internal class ManiaSession(
     val startTick: Long,
@@ -174,9 +153,6 @@ internal class ManiaSession(
         }
     private var startRemaining: Double? = null
 
-    /** Resolved band per offset index (see [ManiaGeometry.offsetX]). */
-    val columnBand: IntArray = offsetFormula.copyOf()
-
     private var cycleStartTick = 0L
     private var redstoneTick = 0L
     private var coalTick = 0L
@@ -184,17 +160,7 @@ internal class ManiaSession(
     private var referenceCount = 0
     private var lastRedCount = 0
     private var refitsAfterLock = 0
-    private var overrideCount = 0
     private val centreWins = HashMap<Long, Int>()
-
-    // Learned observations per absolute column, on a grid around the initial guess so they survive a centre change.
-    // Green/red counts are indexed `cell * 5 + ring of that cycle`.
-    private val greenCounts = IntArray(GRID_CELLS * 5)
-    private val redCounts = IntArray(GRID_CELLS * 5)
-    private val coalCounts = IntArray(GRID_CELLS)
-    private val orbitGreen = IntArray(ORBIT_COUNT * 5)
-    private val orbitRed = IntArray(ORBIT_COUNT * 5)
-    private val orbitCoal = IntArray(ORBIT_COUNT)
 
     private val greens = IntArrayList()
     private val reds = IntArrayList()
@@ -217,7 +183,7 @@ internal class ManiaSession(
 
     fun bandAt(x: Int, z: Int): Int {
         val i = ManiaGeometry.offsetIndex(x - centreX, z - centreZ)
-        return if (i < 0) OUTSIDE else columnBand[i]
+        return if (i < 0) OUTSIDE else offsetBand[i]
     }
 
     /** Block the column should currently show, or null if we can't tell (or it isn't part of the pattern). */
@@ -339,15 +305,9 @@ internal class ManiaSession(
 
     fun finish(reason: String) {
         if (!log.enabled) return
-        var differing = 0
-        if (locked) for (i in 0 until offsetCount) {
-            if (columnBand[i] == offsetFormula[i]) continue
-            differing++
-            log.file("L ${offsetX[i]} ${offsetZ[i]} learned=${bandName(columnBand[i])} formula=${bandName(offsetFormula[i])}")
-        }
         val centre = if (locked) "($centreX, $centreZ)" else "unlocked"
-        log.chat("Session ended ($reason): ${cycleIndex + 1} cycles, centre $centre, $differing columns differ from formula")
-        log.file("END reason=$reason cycles=${cycleIndex + 1} centre=$centre differing=$differing")
+        log.chat("Session ended ($reason): ${cycleIndex + 1} cycles, centre $centre")
+        log.file("END reason=$reason cycles=${cycleIndex + 1} centre=$centre")
     }
 
     /**
@@ -383,7 +343,7 @@ internal class ManiaSession(
                 ManiaBlock.RED -> reds.add(i)
                 ManiaBlock.REDSTONE -> redstones.add(i)
                 ManiaBlock.COAL -> coals.add(i)
-                ManiaBlock.NONE -> if (columnBand[i] != OUTSIDE) inNone++
+                ManiaBlock.NONE -> if (offsetBand[i] != OUTSIDE) inNone++
             }
         }
         return inNone
@@ -498,7 +458,7 @@ internal class ManiaSession(
                     if (distSq > FOREIGN_RADIUS_SQ && type != ManiaBlock.COAL) foreign++
                     continue
                 }
-                val band = formulaBand(dx, dz)
+                val band = bandOf(dx, dz)
                 // Coal only supports a fit: another boss's coal step can land in the same tick as our terracotta.
                 when (type) {
                     ManiaBlock.GREEN -> greenHist[band]++
@@ -613,9 +573,6 @@ internal class ManiaSession(
         locked = true
         centreVersion++
         if (reset) {
-            greenCounts.fill(0)
-            redCounts.fill(0)
-            coalCounts.fill(0)
             phase = Phase.WAITING
             greenRing = 0
             cycleIndex = -1
@@ -623,7 +580,6 @@ internal class ManiaSession(
             referenceCount = 0
             lastRedCount = 0
         }
-        resolveBands()
     }
 
     /** @return true if the batch was accepted as ours. */
@@ -680,11 +636,6 @@ internal class ManiaSession(
             if (referenceCount == 0) referenceCount = total
         }
         lastRedCount += reds.size
-
-        for (j in 0 until greens.size) greenCounts[gridOf(greens.getInt(j)) * 5 + ring]++
-        for (j in 0 until reds.size) redCounts[gridOf(reds.getInt(j)) * 5 + ring]++
-        if (cycleIndex == 0) for (j in 0 until coals.size) coalCounts[gridOf(coals.getInt(j))]++
-        resolveBands()
 
         return outcome(true) {
             val kind = if (continuation) "continuation" else if (replacing) "late" else if (reanchoring) "re-anchored" else "cycle ${cycleIndex + 1}"
@@ -748,81 +699,9 @@ internal class ManiaSession(
         return accepted
     }
 
-    /** Learned per-column data first, then its symmetric orbit, then the radius formula. */
-    private fun resolveBands() {
-        orbitGreen.fill(0)
-        orbitRed.fill(0)
-        orbitCoal.fill(0)
-        for (i in 0 until offsetCount) {
-            val g = gridOf(i)
-            val o = offsetOrbit[i]
-            for (k in 1..4) {
-                orbitGreen[o * 5 + k] += greenCounts[g * 5 + k]
-                orbitRed[o * 5 + k] += redCounts[g * 5 + k]
-            }
-            orbitCoal[o] += coalCounts[g]
-        }
-
-        var overrides = 0
-        for (i in 0 until offsetCount) {
-            val formula = offsetFormula[i]
-            val g = gridOf(i)
-            val o = offsetOrbit[i]
-            var band = resolve(greenCounts, redCounts, g * 5, coalCounts[g], formula)
-            if (band == UNKNOWN) band = resolve(orbitGreen, orbitRed, o * 5, orbitCoal[o], formula)
-            if (band == UNKNOWN) band = formula
-            columnBand[i] = band
-            if (band != formula) overrides++
-        }
-        if (overrides != overrideCount) {
-            overrideCount = overrides
-            if (log.enabled) log.chat("Learned data overrides the formula on $overrides columns")
-        }
-    }
-
-    /**
-     * Scores the bands adjacent to the formula band against the observations (green in cycle k supports ring k and
-     * contradicts the others; red in cycle k contradicts ring k; first-cycle coal supports core/border). A band other
-     * than the formula's needs [OVERRIDE_MARGIN] more support, so a stray foreign update can't flip a column while a
-     * genuinely wrong radius still gets corrected after a couple of cycles. [UNKNOWN] when the evidence is too weak.
-     */
-    private fun resolve(green: IntArray, red: IntArray, base: Int, coal: Int, formula: Int): Int {
-        var totalGreen = 0
-        var totalRed = 0
-        for (k in 1..4) {
-            totalGreen += green[base + k]
-            totalRed += red[base + k]
-        }
-        if (totalGreen == 0 && totalRed == 0 && coal == 0) return UNKNOWN
-
-        var best = UNKNOWN
-        var bestSupport = Int.MIN_VALUE
-        var formulaSupport = Int.MIN_VALUE
-        for (band in max(CORE, formula - 1)..minOf(OUTSIDE, formula + 1)) {
-            val support = when {
-                isRing(band) -> 2 * green[base + band] - totalGreen - red[base + band] - COAL_WEIGHT * coal
-                band == OUTSIDE -> -COAL_WEIGHT * coal - totalGreen - totalRed
-                else -> COAL_WEIGHT * coal - totalGreen - totalRed
-            }
-            if (band == formula) formulaSupport = support
-            if (support > bestSupport) {
-                best = band
-                bestSupport = support
-            }
-        }
-        return when {
-            best == formula || bestSupport == formulaSupport -> formula
-            bestSupport - formulaSupport >= OVERRIDE_MARGIN -> best
-            else -> UNKNOWN
-        }
-    }
-
-    private fun gridOf(offset: Int): Int =
-        (centreX - guessX + offsetX[offset] + GRID_RADIUS) * GRID_SIDE + (centreZ - guessZ + offsetZ[offset] + GRID_RADIUS)
-
     private fun fillHistograms(cells: IntArrayList, hist: IntArray) {
         hist.fill(0)
-        for (j in 0 until cells.size) hist[columnBand[cells.getInt(j)]]++
+        for (j in 0 until cells.size) hist[offsetBand[cells.getInt(j)]]++
     }
 
     private fun ringSum(hist: IntArray) = hist[1] + hist[2] + hist[3] + hist[4]
@@ -835,10 +714,6 @@ internal class ManiaSession(
     }
 
     private companion object {
-        const val GRID_RADIUS = CAPTURE_RADIUS
-        const val GRID_SIDE = 2 * GRID_RADIUS + 1
-        const val GRID_CELLS = GRID_SIDE * GRID_SIDE
-
         const val REDSTONE_OFFSET = 25
         const val REDSTONE_DURATION = 20
         const val COAL_OFFSET = REDSTONE_OFFSET + REDSTONE_DURATION
@@ -873,8 +748,6 @@ internal class ManiaSession(
         const val GROUP_COAL = 2
         const val GROUP_NONE = 3
         val GROUP_NAMES = arrayOf("terracotta", "redstone", "coal")
-        const val OVERRIDE_MARGIN = 3
-        const val COAL_WEIGHT = 3
         const val MIN_MARGIN = 0.15
         const val MIN_TERRACOTTA_COVERAGE = 0.4
         const val MIN_STAGE_COVERAGE = 0.3
