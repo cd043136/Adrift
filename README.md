@@ -2,7 +2,7 @@
 
 Odin addon focused mainly on Rift & vampire slayer features
 
-**This branch contains mostly ai slop additions from me messing around with free tokens**
+**This branch contains mostly ai slop additions from me messing around with free tokens** 
 
 > Requires [Odin](https://modrinth.com/mod/odin) 
 

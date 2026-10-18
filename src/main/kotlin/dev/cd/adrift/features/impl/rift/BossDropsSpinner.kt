@@ -56,6 +56,7 @@ class BossDropsSpinner(
     private var lastSoundAt = 0L
     private var finished = false
     private var spinStoppedNotified = false
+    private var sangriaJinglePlayed = false
 
     private val totalSpinMs: Long
         get() = baseDuration.inWholeMilliseconds
@@ -106,6 +107,8 @@ class BossDropsSpinner(
     }
 
     override fun removed() {
+        // Closing before the reel lands still reveals the dye.
+        playSangriaJingle()
         if (!finished) {
             finished = true
             runFinish()
@@ -159,21 +162,21 @@ class BossDropsSpinner(
             Component.literal("VAMPIRE CASE").withStyle(winners.first().color),
             0,
             0,
-            0xFFFFFF,
+            0xFFFFFFFF.toInt(),
         )
         graphics.pose().popMatrix()
 
         renderStrip(graphics, elapsed, cy)
 
         if (allStopped()) {
-            graphics.centeredText(font, header(), width / 2, cy + 110, 0xFFFFFF)
-            graphics.centeredText(font, footer(), width / 2, cy + 124, 0xFFFFFF)
+            graphics.centeredText(font, header(), width / 2, cy + 110, 0xFFFFFFFF.toInt())
+            graphics.centeredText(font, footer(), width / 2, cy + 124, 0xFFFFFFFF.toInt())
             graphics.centeredText(
                 font,
                 Component.literal("Click to close").withStyle(net.minecraft.ChatFormatting.GRAY),
                 width / 2,
                 cy + 140,
-                0xFFFFFF,
+                0xFFFFFFFF.toInt(),
             )
         } else {
             graphics.centeredText(
@@ -181,7 +184,7 @@ class BossDropsSpinner(
                 Component.literal("Opening...").withStyle(net.minecraft.ChatFormatting.GRAY),
                 width / 2,
                 cy + 116,
-                0xFFFFFF,
+                0xFFFFFFFF.toInt(),
             )
         }
 
@@ -206,6 +209,7 @@ class BossDropsSpinner(
             stopped = true
             playStop()
             playFanfare()
+            playSangriaJingle()
             notifySpinStopped()
         }
 
@@ -391,6 +395,12 @@ class BossDropsSpinner(
         Minecraft.getInstance().soundManager.play(
             SimpleSoundInstance.forUI(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.0f, 0.8f),
         )
+    }
+
+    private fun playSangriaJingle() {
+        if (!playSounds || sangriaJinglePlayed || VampireDrop.SANGRIA !in winners) return
+        sangriaJinglePlayed = true
+        CelebrationSounds.playSangriaJingle()
     }
 
     private fun header(): Component {

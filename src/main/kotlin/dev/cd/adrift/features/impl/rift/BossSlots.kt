@@ -14,9 +14,12 @@ import com.odtheking.odin.utils.skyblock.LocationUtils
 import dev.cd.adrift.events.SlayerEvent
 import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.VampireDrop
+import net.minecraft.core.Holder
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket
 import net.minecraft.network.protocol.game.ClientboundSoundPacket
+import net.minecraft.sounds.SoundEvent
+import net.minecraft.sounds.SoundEvents
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.item.ItemEntity
 import java.util.concurrent.ThreadLocalRandom
@@ -51,7 +54,7 @@ object BossSlots : Module(
     private val playSounds by BooleanSetting(
         "Play Sounds",
         default = true,
-        desc = "Play slot tick sounds",
+        desc = "Play slot tick sounds and replay the Sangria Dye jingle when it is revealed",
     )
     private val hideItems by BooleanSetting(
         "Hide Dropped Items",
@@ -104,6 +107,14 @@ object BossSlots : Module(
     /** True while incoming sound packets are being dropped. */
     private fun shouldMuteSounds(): Boolean =
         enabled && muteSounds && (collecting || spinning)
+
+    /**
+     * Closing the spinner early stops muting while the server's own dye jingle
+     * may still be arriving; drop it so it doesn't double up with the replay.
+     */
+    private fun isSangriaJingleEcho(sound: Holder<SoundEvent>): Boolean =
+        enabled && muteSounds && CelebrationSounds.isSangriaJinglePlaying() &&
+            sound.value().location() == SoundEvents.NOTE_BLOCK_PLING.value().location()
 
     /**
      * Buffers a client-rebuilt component (e.g. SlayerDrops rename) so it is
@@ -273,11 +284,11 @@ object BossSlots : Module(
         }
 
         onReceive<ClientboundSoundPacket> {
-            if (shouldMuteSounds()) it.cancel()
+            if (shouldMuteSounds() || isSangriaJingleEcho(sound)) it.cancel()
         }
 
         onReceive<ClientboundSoundEntityPacket> {
-            if (shouldMuteSounds()) it.cancel()
+            if (shouldMuteSounds() || isSangriaJingleEcho(sound)) it.cancel()
         }
     }
 
