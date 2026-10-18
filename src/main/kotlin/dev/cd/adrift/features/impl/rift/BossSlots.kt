@@ -59,7 +59,7 @@ object BossSlots : Module(
     private val winEffects by BooleanSetting(
         "Win Effects",
         default = true,
-        desc = "Casino-style BIG WIN celebration when the reel lands on The One or Unfanged",
+        desc = "Casino-style BIG WIN for The One / Unfanged and JACKPOT for Sangria Dye",
     )
     private val hideItems by BooleanSetting(
         "Hide Dropped Items",

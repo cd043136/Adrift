@@ -41,6 +41,10 @@ object CelebrationSounds {
 
     private val sangriaJingleTicks: Int = sangriaJingle.maxOf { it.tick }
 
+    /** Ticks where the jingle hits a 3+ note chord; the JACKPOT effect flashes on these. */
+    val sangriaJingleAccentTicks: List<Int> =
+        sangriaJingle.groupingBy { it.tick }.eachCount().filterValues { it >= 3 }.keys.sorted()
+
     @Volatile
     private var sangriaJingleUntil = 0L
 
@@ -57,7 +61,29 @@ object CelebrationSounds {
         when (tier) {
             WinTier.NONE -> Unit
             WinTier.BIG_WIN -> UiSounds.playSequence(bigWin())
+            WinTier.JACKPOT -> UiSounds.playSequence(jackpot())
         }
+    }
+
+    /**
+     * Layered over the Sangria jingle: a totem burst, an alarm-bell ding-ding,
+     * fireworks landing on the jingle's chord hits, a long coin shower and a
+     * challenge-complete finale once the jingle ends.
+     */
+    private fun jackpot(): List<SoundCue> = buildList {
+        cue(0, SoundEvents.TOTEM_USE, 1.1f, volume = 0.55f)
+        cue(0, SoundEvents.FIREWORK_ROCKET_LARGE_BLAST, 1.0f, volume = 0.9f)
+        for (tick in 0..11) {
+            cue(tick, SoundEvents.NOTE_BLOCK_BELL, if (tick % 2 == 0) 2.0f else 1.4983071f, volume = 0.45f)
+        }
+        for (tick in intArrayOf(6, 30, 64)) cue(tick, SoundEvents.FIREWORK_ROCKET_LAUNCH, 1.0f, volume = 0.6f)
+        for (tick in intArrayOf(13, 37, 72, 82)) cue(tick, SoundEvents.FIREWORK_ROCKET_LARGE_BLAST, 1.0f, volume = 0.8f)
+        for (tick in intArrayOf(19, 43, 76)) cue(tick, SoundEvents.FIREWORK_ROCKET_BLAST, 1.0f, volume = 0.7f)
+        for (tick in intArrayOf(22, 46, 85)) cue(tick, SoundEvents.FIREWORK_ROCKET_TWINKLE, 1.0f, volume = 0.6f)
+        cue(88, SoundEvents.FIREWORK_ROCKET_TWINKLE, 1.2f, volume = 0.6f)
+        coinShower(4..86, everyTicks = 2, volume = 0.3f)
+        cue(88, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, volume = 0.9f)
+        cue(88, SoundEvents.PLAYER_LEVELUP, 0.8f, volume = 0.8f)
     }
 
     /** Level-up hit, a bell arpeggio up F# major, a payout chord and a shower of coin clinks. */

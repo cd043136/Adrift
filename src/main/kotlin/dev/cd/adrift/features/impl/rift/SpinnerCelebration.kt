@@ -4,6 +4,7 @@ import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.util.ARGB
+import net.minecraft.util.Mth
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -18,10 +19,12 @@ import kotlin.random.Random
 enum class WinTier(val holdMs: Long) {
     NONE(3_000L),
     BIG_WIN(4_500L),
+    JACKPOT(7_000L),
     ;
 
     companion object {
         fun of(drops: Collection<VampireDrop>): WinTier = when {
+            VampireDrop.SANGRIA in drops -> JACKPOT
             VampireDrop.THE_ONE in drops || VampireDrop.UNFANGED in drops -> BIG_WIN
             else -> NONE
         }
@@ -41,9 +44,13 @@ data class CellRect(val left: Int, val top: Int, val right: Int, val bottom: Int
  * rotating light rays behind the winner cell, a landing flash, glowing
  * rings and chasing marquee bulbs around the cell, coin and sparkle
  * particles, and a popping banner that replaces the case title.
+ *
+ * JACKPOT goes further: counter-rotating sangria/gold rays, a pulsing red
+ * vignette, a screen-wide chasing marquee, flashes on the Sangria jingle's
+ * chord hits, coin fountains, confetti rain and a shaking rainbow banner.
  */
 class SpinnerCelebration(private val tier: WinTier) {
-    private enum class Kind { COIN, SPARKLE }
+    private enum class Kind { COIN, CONFETTI, SPARKLE }
 
     private class Particle(
         val kind: Kind,
@@ -65,7 +72,10 @@ class SpinnerCelebration(private val tier: WinTier) {
     private val particles = ArrayList<Particle>()
     private var burstSpawned = false
     private var coinCarry = 0f
+    private var confettiCarry = 0f
     private var sparkleCarry = 0f
+
+    private val jackpot = tier == WinTier.JACKPOT
 
     private val ageMs: Long
         get() = System.currentTimeMillis() - startedAt
@@ -73,9 +83,18 @@ class SpinnerCelebration(private val tier: WinTier) {
     /** Drawn before the strip so the rays shine out from behind it. */
     fun renderBackdrop(graphics: GuiGraphicsExtractor, width: Int, height: Int, cell: CellRect) {
         val reach = farthestCorner(cell, width, height) * easeOutCubic(min(ageMs / 350f, 1f))
-        drawRays(graphics, cell, reach, 12, ageMs / 1000f * 0.4f) { i ->
-            if (i % 2 == 0) ARGB.color(0x50, GOLD) else ARGB.color(0x2C, PALE_GOLD)
+        val seconds = ageMs / 1000f
+        if (!jackpot) {
+            drawRays(graphics, cell, reach, 12, seconds * 0.4f) { i ->
+                if (i % 2 == 0) ARGB.color(0x50, GOLD) else ARGB.color(0x2C, PALE_GOLD)
+            }
+            return
         }
+        drawVignette(graphics, width, height)
+        drawRays(graphics, cell, reach, 18, seconds * 0.6f) { i ->
+            if (i % 2 == 0) ARGB.color(0x60, SANGRIA) else ARGB.color(0x50, GOLD)
+        }
+        drawRays(graphics, cell, reach * 0.8f, 9, -seconds * 0.35f) { ARGB.color(0x22, 0xFFFFFF) }
     }
 
     /** Drawn in a stratum above the strip and its text. */
@@ -90,14 +109,19 @@ class SpinnerCelebration(private val tier: WinTier) {
         val now = System.nanoTime()
         val dt = ((now - lastFrameNanos) / 1e9f).coerceIn(0f, 0.05f)
         lastFrameNanos = now
-        spawnParticles(cell, dt)
+        spawnParticles(cell, width, height, dt)
         updateParticles(dt, width, height)
 
         drawFlash(graphics, width, height)
+        if (jackpot) drawScreenMarquee(graphics, width, height)
         drawCellGlow(graphics, cell)
         drawCellBulbs(graphics, cell)
         drawParticles(graphics)
-        drawBanner(graphics, font, width, titleCenterY)
+        if (jackpot) {
+            drawJackpotBanner(graphics, font, width, titleCenterY)
+        } else {
+            drawBanner(graphics, font, width, titleCenterY)
+        }
     }
 
     // ---- Backdrop ----
@@ -135,22 +159,58 @@ class SpinnerCelebration(private val tier: WinTier) {
         }
     }
 
+    /** Sangria-red glow pulsing in from the top and bottom edges. */
+    private fun drawVignette(graphics: GuiGraphicsExtractor, width: Int, height: Int) {
+        val pulse = 0.5f + 0.5f * sin(ageMs / 160f)
+        val edge = ARGB.color((0x30 + 0x50 * pulse).toInt(), SANGRIA)
+        val clear = ARGB.color(0, SANGRIA)
+        graphics.fillGradient(0, 0, width, height / 3, edge, clear)
+        graphics.fillGradient(0, height - height / 3, width, height, clear, edge)
+    }
+
     // ---- Overlay ----
 
     private fun drawFlash(graphics: GuiGraphicsExtractor, width: Int, height: Int) {
         val t = ageMs
-        if (t >= FLASH_MS) return
-        graphics.fill(0, 0, width, height, ARGB.white(0.55f * (1f - t / FLASH_MS.toFloat())))
+        val flashMs = if (jackpot) 450f else 300f
+        if (t < flashMs) {
+            val peak = if (jackpot) 0.85f else 0.55f
+            graphics.fill(0, 0, width, height, ARGB.white(peak * (1f - t / flashMs)))
+        }
+        if (!jackpot) return
+        // Red pulses on the jingle's chord hits.
+        var accent = 0f
+        for (tick in CelebrationSounds.sangriaJingleAccentTicks) {
+            val since = t - tick * 50L
+            if (since in 0 until ACCENT_FLASH_MS) accent = max(accent, 1f - since / ACCENT_FLASH_MS.toFloat())
+        }
+        if (accent > 0f) graphics.fill(0, 0, width, height, ARGB.color(0.3f * accent, ACCENT_RED))
+    }
+
+    /** Chasing gold / red / off bulbs around the whole screen edge. */
+    private fun drawScreenMarquee(graphics: GuiGraphicsExtractor, width: Int, height: Int) {
+        val inset = 4
+        val step = (ageMs / 70L).toInt()
+        val points = perimeter(inset, inset, width - inset, height - inset, 12)
+        for (i in points.indices) {
+            val (color, lit) = when (Math.floorMod(i - step, 3)) {
+                0 -> BULB_ON to true
+                1 -> SANGRIA_BULB to true
+                else -> BULB_OFF to false
+            }
+            drawBulb(graphics, points[i].first, points[i].second, 4, color, lit)
+        }
     }
 
     private fun drawCellGlow(graphics: GuiGraphicsExtractor, cell: CellRect) {
         val pulse = 0.45f + 0.55f * (0.5f + 0.5f * sin(ageMs / 130f))
         for (pad in 3..8) {
             val alpha = (0x90 * (1f - (pad - 3) / 6f) * pulse).toInt()
+            val rgb = if (jackpot && pad % 2 == 0) SANGRIA else GOLD
             graphics.outline(
                 cell.left - pad, cell.top - pad,
                 cell.width + pad * 2, cell.height + pad * 2,
-                ARGB.color(alpha, GOLD),
+                ARGB.color(alpha, rgb),
             )
         }
     }
@@ -161,7 +221,8 @@ class SpinnerCelebration(private val tier: WinTier) {
         val points = perimeter(cell.left - pad, cell.top - pad, cell.right + pad, cell.bottom + pad, 8)
         for (i in points.indices) {
             val lit = Math.floorMod(i - step, 3) == 0
-            drawBulb(graphics, points[i].first, points[i].second, 3, if (lit) BULB_ON else BULB_OFF, lit)
+            val on = if (jackpot && (i / 3) % 2 == 1) SANGRIA_BULB else BULB_ON
+            drawBulb(graphics, points[i].first, points[i].second, 3, if (lit) on else BULB_OFF, lit)
         }
     }
 
@@ -187,6 +248,32 @@ class SpinnerCelebration(private val tier: WinTier) {
         pose.popMatrix()
     }
 
+    /** Per-letter rainbow and wave, with a shake that settles after the landing. */
+    private fun drawJackpotBanner(graphics: GuiGraphicsExtractor, font: Font, width: Int, centerY: Float) {
+        val pop = easeOutBack(min(ageMs / 550f, 1f))
+        if (pop <= 0.01f) return
+        val text = "JACKPOT!!!"
+        val textWidth = font.width(text)
+        val pulse = 1f + 0.05f * sin(ageMs / 90f)
+        val scale = min(4.5f, width * 0.92f / textWidth) * pop * pulse
+        val shake = 0.6f + 2.4f * (1f - min(ageMs / 1_500f, 1f))
+        val pose = graphics.pose()
+        pose.pushMatrix()
+        pose.translate(width / 2f + signedRandom() * shake, centerY + signedRandom() * shake)
+        pose.scale(scale, scale)
+        var x = -textWidth / 2
+        text.forEachIndexed { i, ch ->
+            val letter = ch.toString()
+            val hue = (ageMs / 700f + i * 0.09f) % 1f
+            pose.pushMatrix()
+            pose.translate(0f, sin(ageMs / 120f + i * 0.7f) * 1.5f)
+            drawOutlinedText(graphics, font, letter, x, -4, Mth.hsvToArgb(hue, 0.7f, 1f, 255), JACKPOT_OUTLINE)
+            pose.popMatrix()
+            x += font.width(letter)
+        }
+        pose.popMatrix()
+    }
+
     private fun drawOutlinedText(
         graphics: GuiGraphicsExtractor,
         font: Font,
@@ -202,7 +289,11 @@ class SpinnerCelebration(private val tier: WinTier) {
 
     // ---- Particles ----
 
-    private fun spawnParticles(cell: CellRect, dt: Float) {
+    private fun spawnParticles(cell: CellRect, width: Int, height: Int, dt: Float) {
+        if (jackpot) {
+            spawnJackpotParticles(cell, width, height, dt)
+            return
+        }
         if (!burstSpawned) {
             burstSpawned = true
             repeat(45) { addCoin(cell.centerX, cell.centerY, 180f, 380f) }
@@ -222,10 +313,69 @@ class SpinnerCelebration(private val tier: WinTier) {
         }
     }
 
-    /** Launches a coin upward within ±70° of vertical. */
-    private fun addCoin(x: Float, y: Float, minSpeed: Float, maxSpeed: Float) {
+    /** Big burst from the cell, then coin fountains from both bottom corners, confetti rain and screen sparkles. */
+    private fun spawnJackpotParticles(cell: CellRect, width: Int, height: Int, dt: Float) {
+        if (!burstSpawned) {
+            burstSpawned = true
+            repeat(90) { addCoin(cell.centerX, cell.centerY, 200f, 460f) }
+            repeat(70) { addConfetti(cell.centerX, cell.centerY, burst = true) }
+            repeat(30) { addSparkleAround(cell) }
+        }
+        if (ageMs >= 5_500L) return
+        coinCarry += dt * 40f
+        while (coinCarry >= 1f) {
+            coinCarry -= 1f
+            val fromLeft = Random.nextBoolean()
+            val tilt = (0.15 + Random.nextDouble() * 0.45) * if (fromLeft) 1 else -1
+            addCoin(if (fromLeft) 0f else width.toFloat(), height.toFloat(), 350f, 560f, -PI / 2 + tilt, 0.0)
+        }
+        confettiCarry += dt * 60f
+        while (confettiCarry >= 1f) {
+            confettiCarry -= 1f
+            addConfetti(Random.nextFloat() * width, -8f, burst = false)
+        }
+        sparkleCarry += dt * 24f
+        while (sparkleCarry >= 1f) {
+            sparkleCarry -= 1f
+            if (particles.size < MAX_PARTICLES) addSparkle(Random.nextFloat() * width, Random.nextFloat() * height)
+        }
+    }
+
+    /** Burst confetti flies up out of the cell; rain confetti drifts down from above the screen. */
+    private fun addConfetti(x: Float, y: Float, burst: Boolean) {
         if (particles.size >= MAX_PARTICLES) return
-        val angle = (-PI / 2 + (Random.nextDouble() * 2 - 1) * COIN_CONE).toFloat()
+        val vx: Float
+        val vy: Float
+        if (burst) {
+            val angle = (-PI / 2 + (Random.nextDouble() * 2 - 1) * CONFETTI_CONE).toFloat()
+            val speed = 150f + Random.nextFloat() * 200f
+            vx = cos(angle) * speed
+            vy = sin(angle) * speed
+        } else {
+            vx = signedRandom() * 30f
+            vy = 40f + Random.nextFloat() * 50f
+        }
+        particles += Particle(
+            Kind.CONFETTI, x, y, vx, vy,
+            size = 3,
+            color = CONFETTI_COLORS[Random.nextInt(CONFETTI_COLORS.size)],
+            lifeMs = 6_000f,
+            spin = Random.nextFloat() * TWO_PI,
+            spinSpeed = signedRandom() * 8f,
+        )
+    }
+
+    /** Launches a coin at [aim] radians (default straight up) within ±[cone]. */
+    private fun addCoin(
+        x: Float,
+        y: Float,
+        minSpeed: Float,
+        maxSpeed: Float,
+        aim: Double = -PI / 2,
+        cone: Double = COIN_CONE,
+    ) {
+        if (particles.size >= MAX_PARTICLES) return
+        val angle = (aim + (Random.nextDouble() * 2 - 1) * cone).toFloat()
         val speed = minSpeed + Random.nextFloat() * (maxSpeed - minSpeed)
         particles += Particle(
             Kind.COIN, x, y, cos(angle) * speed, sin(angle) * speed,
@@ -261,6 +411,12 @@ class SpinnerCelebration(private val tier: WinTier) {
             p.ageMs += dt * 1000f
             when (p.kind) {
                 Kind.COIN -> p.vy += COIN_GRAVITY * dt
+                Kind.CONFETTI -> {
+                    p.vy += CONFETTI_GRAVITY * dt
+                    p.vx *= 1f - 1.2f * dt
+                    p.vy *= 1f - 0.8f * dt
+                    p.x += sin(p.ageMs / 180f + p.spin) * 14f * dt
+                }
                 Kind.SPARKLE -> {
                     p.vx *= 1f - 3f * dt
                     p.vy *= 1f - 3f * dt
@@ -277,9 +433,22 @@ class SpinnerCelebration(private val tier: WinTier) {
         for (p in particles) {
             when (p.kind) {
                 Kind.COIN -> drawCoin(graphics, p)
+                Kind.CONFETTI -> drawConfetti(graphics, p)
                 Kind.SPARKLE -> drawSparkle(graphics, p)
             }
         }
+    }
+
+    /** Small rotating strip whose height flips with a second phase so it flutters. */
+    private fun drawConfetti(graphics: GuiGraphicsExtractor, p: Particle) {
+        val fade = ((p.lifeMs - p.ageMs) / 400f).coerceIn(0f, 1f)
+        val pose = graphics.pose()
+        pose.pushMatrix()
+        pose.translate(p.x, p.y)
+        pose.rotate(p.spin)
+        pose.scale(1f, abs(cos(p.ageMs / 120f + p.spin)).coerceAtLeast(0.2f))
+        graphics.fill(-1, -2, p.size - 1, 3, ARGB.multiplyAlpha(p.color, fade))
+        pose.popMatrix()
     }
 
     /** Octagonal coin squashed horizontally by its spin so it reads as flipping. */
@@ -315,12 +484,17 @@ class SpinnerCelebration(private val tier: WinTier) {
         const val MAX_PARTICLES = 600
         const val RAY_SEGMENTS = 5
         const val FLASH_MS = 300L
+        const val ACCENT_FLASH_MS = 160L
         const val COIN_GRAVITY = 620f
+        const val CONFETTI_GRAVITY = 160f
         const val COIN_CONE = 70 * PI / 180
+        const val CONFETTI_CONE = 80 * PI / 180
         const val TWO_PI = (2 * PI).toFloat()
 
         const val GOLD = 0xFFD700
         const val PALE_GOLD = 0xFFF3B0
+        const val SANGRIA = 0xD40808
+        const val ACCENT_RED = 0xFF3030
         val GOLD_TEXT = 0xFFFFD700.toInt()
         val PALE_GOLD_TEXT = 0xFFFFF6B0.toInt()
         val BIG_WIN_OUTLINE = 0xFF5A3A00.toInt()
@@ -329,8 +503,16 @@ class SpinnerCelebration(private val tier: WinTier) {
         val COIN_SHINE = 0xFFFFFBE0.toInt()
         val BULB_ON = 0xFFFFF7C0.toInt()
         val BULB_OFF = 0xFF6A5010.toInt()
+        val SANGRIA_BULB = 0xFFFF3A3A.toInt()
+        val JACKPOT_OUTLINE = 0xFF3A0005.toInt()
+        val CONFETTI_COLORS = intArrayOf(
+            0xFFD40808.toInt(), 0xFFFFD700.toInt(), 0xFFFFFFFF.toInt(),
+            0xFFFF55FF.toInt(), 0xFF55FFFF.toInt(), 0xFF55FF55.toInt(),
+        )
 
         val OUTLINE_OFFSETS = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
+
+        fun signedRandom(): Float = Random.nextFloat() * 2f - 1f
 
         fun perimeter(left: Int, top: Int, right: Int, bottom: Int, spacing: Int): List<Pair<Int, Int>> = buildList {
             var x = left
