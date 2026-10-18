@@ -26,11 +26,13 @@ import kotlin.time.Duration
  * the winner cell (near an edge, not just dead center) so the result isn't
  * predictable. Hidden drop chat is re-sent via [onSpinStopped] when the reel
  * stops, and via [onFinish] when the screen is closed before the reel finishes.
+ * Top results get a [SpinnerCelebration] when [winEffects] is on.
  */
 class BossDropsSpinner(
     winningDrops: List<VampireDrop>,
     private val baseDuration: Duration,
     private val playSounds: Boolean,
+    private val winEffects: Boolean,
     private val onSpinStopped: () -> Unit,
     private val onFinish: () -> Unit,
 ) : Screen(Component.literal("Boss Slots")) {
@@ -40,7 +42,7 @@ class BossDropsSpinner(
     private val texDims = mutableMapOf<VampireDrop, Pair<Int, Int>>()
 
     private val startTime = System.currentTimeMillis() + 200L
-    private val holdAfterMs = 3000L
+    private var holdAfterMs = WinTier.NONE.holdMs
 
     private val cellSize = 72
     private val spriteSize = 48
@@ -57,9 +59,14 @@ class BossDropsSpinner(
     private var finished = false
     private var spinStoppedNotified = false
     private var sangriaJinglePlayed = false
+    private var celebrated = false
+    private var celebration: SpinnerCelebration? = null
 
     private val totalSpinMs: Long
         get() = baseDuration.inWholeMilliseconds
+
+    private val stripH: Int
+        get() = cellSize + 16
 
     override fun init() {
         super.init()
@@ -153,18 +160,22 @@ class BossDropsSpinner(
         val cy = height / 2
 
         graphics.fill(0, 0, width, height, 0xA0000000.toInt())
+        celebration?.renderBackdrop(graphics, width, height, winnerCell(cy))
 
-        graphics.pose().pushMatrix()
-        graphics.pose().translate((width / 2).toFloat(), height * 0.12f)
-        graphics.pose().scale(3f, 3f)
-        graphics.centeredText(
-            font,
-            Component.literal("VAMPIRE CASE").withStyle(winners.first().color),
-            0,
-            0,
-            0xFFFFFFFF.toInt(),
-        )
-        graphics.pose().popMatrix()
+        // The celebration banner takes over the title once it starts.
+        if (celebration == null) {
+            graphics.pose().pushMatrix()
+            graphics.pose().translate((width / 2).toFloat(), height * 0.12f)
+            graphics.pose().scale(3f, 3f)
+            graphics.centeredText(
+                font,
+                Component.literal("VAMPIRE CASE"),
+                0,
+                0,
+                0xFFFFFFFF.toInt(),
+            )
+            graphics.pose().popMatrix()
+        }
 
         renderStrip(graphics, elapsed, cy)
 
@@ -186,6 +197,12 @@ class BossDropsSpinner(
                 cy + 116,
                 0xFFFFFFFF.toInt(),
             )
+        }
+
+        celebration?.let {
+            // New stratum so the effects draw over the strip and its text.
+            graphics.nextStratum()
+            it.renderOverlay(graphics, font, width, height, winnerCell(cy), height * 0.12f + 12f)
         }
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick)
@@ -210,10 +227,10 @@ class BossDropsSpinner(
             playStop()
             playFanfare()
             playSangriaJingle()
+            celebrate()
             notifySpinStopped()
         }
 
-        val stripH = cellSize + 16
         val top = cy - stripH / 2
         val bottom = cy + stripH / 2
         val cx = width / 2
@@ -260,6 +277,24 @@ class BossDropsSpinner(
     private fun winNeedlePx(): Float {
         if (strip.isEmpty() || winners.isEmpty()) return 0f
         return winStartIdx * stride + needleOffsetPx
+    }
+
+    /** Bounds of the winner cell once the reel has stopped under the needle. */
+    private fun winnerCell(cy: Int): CellRect {
+        val left = (winStartIdx * stride - (winNeedlePx() - width / 2f)).toInt()
+        val top = cy - stripH / 2 + 6
+        return CellRect(left, top, left + cellSize, cy + stripH / 2 - 6)
+    }
+
+    /** Starts the tiered casino effects once per spin; the hold stretches to fit them. */
+    private fun celebrate() {
+        if (celebrated) return
+        celebrated = true
+        val tier = WinTier.of(winners)
+        if (!winEffects || tier == WinTier.NONE) return
+        holdAfterMs = tier.holdMs
+        celebration = SpinnerCelebration(tier)
+        if (playSounds) CelebrationSounds.play(tier)
     }
 
     /**

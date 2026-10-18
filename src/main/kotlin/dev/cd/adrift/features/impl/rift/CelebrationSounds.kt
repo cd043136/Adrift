@@ -5,6 +5,7 @@ import dev.cd.adrift.utils.UiSounds
 import net.minecraft.core.Holder
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
+import kotlin.random.Random
 
 /** Sound cues for Boss Slots reveals, timed in client ticks. */
 object CelebrationSounds {
@@ -20,6 +21,7 @@ object CelebrationSounds {
         1.4920635f, 1.5873016f, 1.6666666f, 1.7777778f, 1.8730159f, 2.0f,
     )
     private val FINAL_CHORD = floatArrayOf(0.4920635f, 0.61904764f, 0.74603176f, 1.0f, 1.2539682f, 1.4920635f, 2.0f)
+    private val F_SHARP_MAJOR = floatArrayOf(0.5f, 0.62996054f, 0.74915355f, 1.0f, 1.2599211f, 1.4983071f, 2.0f)
 
     /**
      * Hypixel's Sangria Dye jingle as captured by Log Sounds (157 plings over
@@ -48,6 +50,32 @@ object CelebrationSounds {
     fun playSangriaJingle() {
         sangriaJingleUntil = System.currentTimeMillis() + sangriaJingleTicks * 50L + 250L
         UiSounds.playSequence(sangriaJingle)
+    }
+
+    /** Plays the stinger for a celebrated landing; NONE stays quiet. */
+    fun play(tier: WinTier) {
+        when (tier) {
+            WinTier.NONE -> Unit
+            WinTier.BIG_WIN -> UiSounds.playSequence(bigWin())
+        }
+    }
+
+    /** Level-up hit, a bell arpeggio up F# major, a payout chord and a shower of coin clinks. */
+    private fun bigWin(): List<SoundCue> = buildList {
+        cue(0, SoundEvents.PLAYER_LEVELUP, 1.0f, volume = 0.9f)
+        cue(0, SoundEvents.FIREWORK_ROCKET_LARGE_BLAST, 1.0f, volume = 0.7f)
+        F_SHARP_MAJOR.forEachIndexed { i, pitch -> cue(1 + i, SoundEvents.NOTE_BLOCK_BELL, pitch, volume = 0.8f) }
+        pling(9, 1.0f, 1.2599211f, 1.4983071f, volume = 0.9f)
+        for (tick in intArrayOf(10, 13, 16)) cue(tick, SoundEvents.NOTE_BLOCK_BELL, 2.0f, volume = 0.6f)
+        cue(12, SoundEvents.FIREWORK_ROCKET_TWINKLE, 1.0f, volume = 0.6f)
+        cue(22, SoundEvents.FIREWORK_ROCKET_TWINKLE, 1.2f, volume = 0.5f)
+        coinShower(4..40, everyTicks = 2, volume = 0.35f)
+    }
+
+    private fun MutableList<SoundCue>.coinShower(ticks: IntRange, everyTicks: Int, volume: Float) {
+        for (tick in ticks step everyTicks) {
+            cue(tick, SoundEvents.EXPERIENCE_ORB_PICKUP, 0.9f + Random.nextFloat() * 0.8f, volume = volume)
+        }
     }
 
     private fun MutableList<SoundCue>.pling(tick: Int, vararg pitches: Float, volume: Float = JINGLE_VOLUME) =

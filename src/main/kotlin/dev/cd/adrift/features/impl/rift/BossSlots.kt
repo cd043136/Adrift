@@ -56,6 +56,11 @@ object BossSlots : Module(
         default = true,
         desc = "Play slot tick sounds and replay the Sangria Dye jingle when it is revealed",
     )
+    private val winEffects by BooleanSetting(
+        "Win Effects",
+        default = true,
+        desc = "Casino-style BIG WIN celebration when the reel lands on The One or Unfanged",
+    )
     private val hideItems by BooleanSetting(
         "Hide Dropped Items",
         default = true,
@@ -315,10 +320,20 @@ object BossSlots : Module(
         pendingDrops.clear()
         spinning = true
         markChatSuppressing()
+        showSpinner(wins) { count ->
+            if (count > 0) {
+                println("[Adrift] BossSlots: screen closed early, re-sent $count hidden message(s)")
+            }
+        }
+    }
+
+    /** Opens the spinner; [onClosed] receives how many hidden messages were re-sent on close. */
+    private fun showSpinner(drops: List<VampireDrop>, onClosed: (Int) -> Unit = {}) {
         val spinner = BossDropsSpinner(
-            wins,
+            drops,
             spinDuration.seconds,
             playSounds,
+            winEffects,
             onSpinStopped = { releaseHiddenChatAfterSpin() },
             onFinish = {
                 val count = drainHidden()
@@ -326,9 +341,7 @@ object BossSlots : Module(
                 collecting = false
                 collectingSince = 0L
                 screen = null
-                if (count > 0) {
-                    println("[Adrift] BossSlots: screen closed early, re-sent $count hidden message(s)")
-                }
+                onClosed(count)
             },
         )
         screen = spinner
@@ -384,21 +397,7 @@ object BossSlots : Module(
             }
             spinning = true
             markChatSuppressing()
-            val spinner = BossDropsSpinner(
-                drops,
-                spinDuration.seconds,
-                playSounds,
-                onSpinStopped = { releaseHiddenChatAfterSpin() },
-                onFinish = {
-                    drainHidden()
-                    spinning = false
-                    collecting = false
-                    collectingSince = 0L
-                    screen = null
-                },
-            )
-            screen = spinner
-            mc.setScreen(spinner)
+            showSpinner(drops)
         }
     }
 
