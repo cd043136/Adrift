@@ -24,13 +24,14 @@ import kotlin.time.Duration
  * render full-size, pairs sit diagonal, triples share a row, with the
  * rarity bar split per drop. The needle stops at a random point inside
  * the winner cell (near an edge, not just dead center) so the result isn't
- * predictable. Hidden drop chat is re-sent via [onFinish], which also runs
- * when the screen is closed early or skipped.
+ * predictable. Hidden drop chat is re-sent via [onSpinStopped] when the reel
+ * stops, and via [onFinish] when the screen is closed before the reel finishes.
  */
 class BossDropsSpinner(
     winningDrops: List<VampireDrop>,
     private val baseDuration: Duration,
     private val playSounds: Boolean,
+    private val onSpinStopped: () -> Unit,
     private val onFinish: () -> Unit,
 ) : Screen(Component.literal("Boss Slots")) {
     private val winners: MutableList<VampireDrop> =
@@ -54,6 +55,7 @@ class BossDropsSpinner(
     private var fanfarePlayed = false
     private var lastSoundAt = 0L
     private var finished = false
+    private var spinStoppedNotified = false
 
     private val totalSpinMs: Long
         get() = baseDuration.inWholeMilliseconds
@@ -133,6 +135,15 @@ class BossDropsSpinner(
         }
     }
 
+    private fun notifySpinStopped() {
+        if (spinStoppedNotified) return
+        spinStoppedNotified = true
+        try {
+            onSpinStopped()
+        } catch (_: Exception) {
+        }
+    }
+
     override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         val elapsed = System.currentTimeMillis() - startTime
         val font = Minecraft.getInstance().font
@@ -195,6 +206,7 @@ class BossDropsSpinner(
             stopped = true
             playStop()
             playFanfare()
+            notifySpinStopped()
         }
 
         val stripH = cellSize + 16

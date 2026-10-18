@@ -30,7 +30,7 @@ import kotlin.time.Duration.Companion.seconds
  * Anti-spoil: while collecting (short window after death) and while spinning,
  * ALL incoming server chat is hidden via `MessageEvent.Chat` cancel (packet
  * itself is left alone so other mods still see it) and re-sent in order once
- * the animation finishes (or is skipped). This covers the rare drop line(s)
+ * the reel stops (or the screen is closed early). This covers the rare drop line(s)
  * plus everything after them up to the last hidden message.
  */
 object BossSlots : Module(
@@ -41,7 +41,7 @@ object BossSlots : Module(
     private val hideDrops by BooleanSetting(
         "Hide Drop Messages",
         default = true,
-        desc = "Hide all chat during the spin and re-send it in order after",
+        desc = "Hide all chat during the spin and re-send it in order when the reel stops",
     )
     private val muteSounds by BooleanSetting(
         "Mute Sounds",
@@ -83,6 +83,7 @@ object BossSlots : Module(
 
     private val pendingDrops = mutableListOf<VampireDrop>()
     private val hidden = mutableListOf<Component>()
+    private var suppressingChat = false
 
     /**
      * Called from the entity-render mixin. Hides every item entity while in
@@ -98,7 +99,7 @@ object BossSlots : Module(
     /** True while incoming server chat is being buffered instead of displayed. */
     @JvmStatic
     fun isSuppressingChat(): Boolean =
-        enabled && hideDrops && (collecting || spinning)
+        enabled && hideDrops && suppressingChat
 
     /** True while incoming sound packets are being dropped. */
     private fun shouldMuteSounds(): Boolean =
@@ -133,6 +134,7 @@ object BossSlots : Module(
             if (LocationUtils.currentArea != Island.Rift) return@on
             pendingDrops.clear()
             hidden.clear()
+            suppressingChat = false
             collectingSince = 0L
         }
 
@@ -188,6 +190,7 @@ object BossSlots : Module(
                 if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
                     cancel()
                     hidden.add(component)
+                    markChatSuppressing()
                     // Start collecting early so following drop chat stays
                     // hidden too; Death preserves this buffer (no wipe) and
                     // the tick timeout resends if no reveal follows.
@@ -213,6 +216,7 @@ object BossSlots : Module(
                 if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
                     cancel()
                     hidden.add(component)
+                    markChatSuppressing()
                     if (!collecting && !spinning) {
                         collecting = true
                         collectingSince = System.currentTimeMillis()
@@ -253,6 +257,7 @@ object BossSlots : Module(
             if (hideDrops && hidden.size < MAX_HIDDEN) {
                 cancel()
                 hidden.add(component)
+                markChatSuppressing()
             }
         }
 
@@ -264,6 +269,7 @@ object BossSlots : Module(
             inRiftCached = false
             pendingDrops.clear()
             hidden.clear()
+            suppressingChat = false
         }
 
         onReceive<ClientboundSoundPacket> {
@@ -280,6 +286,7 @@ object BossSlots : Module(
         if (LocationUtils.currentArea != Island.Rift) {
             pendingDrops.clear()
             hidden.clear()
+            suppressingChat = false
             collectingSince = 0L
             return
         }
@@ -296,23 +303,52 @@ object BossSlots : Module(
         val wins = VampireDrop.resolveWinningDrops(pendingDrops.toList())
         pendingDrops.clear()
         spinning = true
-        val spinner = BossDropsSpinner(wins, spinDuration.seconds, playSounds) {
-            val count = drainHidden()
-            spinning = false
-            collecting = false
-            collectingSince = 0L
-            screen = null
-            println("[Adrift] BossSlots: reveal finished, re-sent $count hidden message(s)")
-        }
+        markChatSuppressing()
+        val spinner = BossDropsSpinner(
+            wins,
+            spinDuration.seconds,
+            playSounds,
+            onSpinStopped = { releaseHiddenChatAfterSpin() },
+            onFinish = {
+                val count = drainHidden()
+                spinning = false
+                collecting = false
+                collectingSince = 0L
+                screen = null
+                if (count > 0) {
+                    println("[Adrift] BossSlots: screen closed early, re-sent $count hidden message(s)")
+                }
+            },
+        )
         screen = spinner
         mc.setScreen(spinner)
     }
 
+    private fun markChatSuppressing() {
+        if (hideDrops) suppressingChat = true
+    }
+
+    /** Re-sends buffered chat when the reel stops; safe to call multiple times. */
+    private fun releaseHiddenChatAfterSpin() {
+        mc.execute {
+            val count = drainHidden()
+            collecting = false
+            collectingSince = 0L
+            if (count > 0) {
+                println("[Adrift] BossSlots: reel stopped, re-sent $count hidden message(s)")
+            }
+        }
+    }
+
     /** Re-sends buffered chat in original order. Returns count re-sent. */
     private fun drainHidden(): Int {
-        if (hidden.isEmpty()) return 0
+        if (hidden.isEmpty()) {
+            suppressingChat = false
+            return 0
+        }
         val messages = hidden.toList()
         hidden.clear()
+        suppressingChat = false
         resendHidden(messages)
         return messages.size
     }
@@ -336,13 +372,20 @@ object BossSlots : Module(
                 return@execute
             }
             spinning = true
-            val spinner = BossDropsSpinner(drops, spinDuration.seconds, playSounds) {
-                drainHidden()
-                spinning = false
-                collecting = false
-                collectingSince = 0L
-                screen = null
-            }
+            markChatSuppressing()
+            val spinner = BossDropsSpinner(
+                drops,
+                spinDuration.seconds,
+                playSounds,
+                onSpinStopped = { releaseHiddenChatAfterSpin() },
+                onFinish = {
+                    drainHidden()
+                    spinning = false
+                    collecting = false
+                    collectingSince = 0L
+                    screen = null
+                },
+            )
             screen = spinner
             mc.setScreen(spinner)
         }
