@@ -1,6 +1,7 @@
 package dev.cd.adrift.features.impl.rift
 
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
+import com.odtheking.odin.clickgui.settings.impl.NumberSetting
 import com.odtheking.odin.events.LevelEvent
 import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.TickEvent
@@ -57,11 +58,19 @@ object BossSlots : Module(
         default = true,
         desc = "Hide item entities near the dead boss until the spin finishes",
     )
+    private val spinDuration by NumberSetting(
+        "Spin Duration",
+        default = 7.0,
+        min = 2.0,
+        max = 10.0,
+        increment = 0.5,
+        desc = "Total time the spin animation takes",
+        unit = "s"
+    )
 
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
     private const val MAX_HIDDEN = 50
     private const val COLLECT_TIMEOUT_MS = 15_000L
-    private val SPIN_DURATION = 8.seconds
 
     private var collecting = false
     private var collectingSince = 0L
@@ -287,7 +296,7 @@ object BossSlots : Module(
         val wins = VampireDrop.resolveWinningDrops(pendingDrops.toList())
         pendingDrops.clear()
         spinning = true
-        val spinner = BossDropsSpinner(wins, SPIN_DURATION, playSounds) {
+        val spinner = BossDropsSpinner(wins, spinDuration.seconds, playSounds) {
             val count = drainHidden()
             spinning = false
             collecting = false
@@ -327,7 +336,7 @@ object BossSlots : Module(
                 return@execute
             }
             spinning = true
-            val spinner = BossDropsSpinner(drops, SPIN_DURATION, playSounds) {
+            val spinner = BossDropsSpinner(drops, spinDuration.seconds, playSounds) {
                 drainHidden()
                 spinning = false
                 collecting = false
