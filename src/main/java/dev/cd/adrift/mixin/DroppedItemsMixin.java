@@ -1,6 +1,6 @@
 package dev.cd.adrift.mixin;
 
-import dev.cd.adrift.features.impl.rift.BossSlots;
+import dev.cd.adrift.features.impl.rift.bossslots.BossSlots;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.world.entity.Entity;

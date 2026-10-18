@@ -7,6 +7,7 @@ import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.modMessage
 import com.odtheking.odin.utils.skyblock.Island
 import com.odtheking.odin.utils.skyblock.LocationUtils
+import dev.cd.adrift.features.impl.rift.bossslots.BossSlots
 import dev.cd.adrift.utils.Category
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component

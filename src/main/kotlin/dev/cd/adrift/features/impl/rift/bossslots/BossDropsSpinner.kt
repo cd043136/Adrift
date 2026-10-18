@@ -1,4 +1,4 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.impl.rift.bossslots
 
 import com.mojang.blaze3d.platform.NativeImage
 import dev.cd.adrift.utils.VampireDrop

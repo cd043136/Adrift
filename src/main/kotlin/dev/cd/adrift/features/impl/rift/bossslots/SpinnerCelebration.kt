@@ -1,4 +1,4 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.impl.rift.bossslots
 
 import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.client.gui.Font

@@ -3,7 +3,7 @@ package dev.cd.adrift.commands
 import com.github.stivais.commodore.Commodore
 import com.github.stivais.commodore.utils.GreedyString
 import com.odtheking.odin.utils.modMessage
-import dev.cd.adrift.features.impl.rift.BossSlots
+import dev.cd.adrift.features.impl.rift.bossslots.BossSlots
 
 // Commands are handled via https://github.com/Stivais/Commodore
 val adriftCommand = Commodore("adrift", "ad") {

@@ -2,7 +2,7 @@ package dev.cd.adrift.commands
 
 import com.github.stivais.commodore.Commodore
 import com.github.stivais.commodore.utils.GreedyString
-import dev.cd.adrift.features.impl.rift.BossSlots
+import dev.cd.adrift.features.impl.rift.bossslots.BossSlots
 
 val simulateSuggestions = listOf(
     "random",

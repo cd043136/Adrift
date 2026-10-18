@@ -1,4 +1,4 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.impl.rift.bossslots
 
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.NumberSetting

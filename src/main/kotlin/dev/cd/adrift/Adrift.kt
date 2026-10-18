@@ -8,7 +8,7 @@ import dev.cd.adrift.commands.simulateCommand
 import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.BeaconSoul
 import dev.cd.adrift.features.impl.rift.BossHighlight
-import dev.cd.adrift.features.impl.rift.BossSlots
+import dev.cd.adrift.features.impl.rift.bossslots.BossSlots
 import dev.cd.adrift.features.impl.rift.HealthWarning
 import dev.cd.adrift.features.impl.rift.LogSounds
 import dev.cd.adrift.features.impl.rift.ManiaHelper
