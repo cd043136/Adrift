@@ -60,7 +60,7 @@ enum class VampireDrop(
         ChatFormatting.GOLD,
         0xFFD40808.toInt(),
         1.0,
-        0.02,
+        0.01,
         Pool.SPECIAL,
         0,
     ),
@@ -176,6 +176,8 @@ enum class VampireDrop(
         get() = Identifier.fromNamespaceAndPath("adrift", "textures/gui/boss_slots/$texture")
 
     companion object {
+        const val SANGRIA_CHANCE = 0.0001
+
         private val THE_ONE_COLOR: TextColor? = TextColor.fromLegacyFormat(ChatFormatting.GOLD)
         private val QUANTUM_COLOR: TextColor? = TextColor.fromLegacyFormat(ChatFormatting.GREEN)
 

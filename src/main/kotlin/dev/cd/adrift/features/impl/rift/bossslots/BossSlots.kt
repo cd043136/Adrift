@@ -445,7 +445,8 @@ object BossSlots : Module(
         } else if (rng.nextDouble() < 0.10) {
             drops.add(VampireDrop.SOULTWIST)
         }
-        if (rng.nextDouble() < 0.03) drops.add(VampireDrop.SANGRIA)
+
+        if (rng.nextDouble() < VampireDrop.SANGRIA_CHANCE) drops.add(VampireDrop.SANGRIA)
         simulate(drops)
     }
 }
