@@ -13,6 +13,7 @@ import com.odtheking.odin.utils.skyblock.Island
 import com.odtheking.odin.utils.skyblock.LocationUtils
 import dev.cd.adrift.events.SlayerEvent
 import dev.cd.adrift.utils.Category
+import dev.cd.adrift.utils.SlayerUtils
 import dev.cd.adrift.utils.VampireDrop
 import net.minecraft.core.Holder
 import net.minecraft.network.chat.Component
@@ -64,7 +65,7 @@ object BossSlots : Module(
     private val hideItems by BooleanSetting(
         "Hide Dropped Items",
         default = true,
-        desc = "Hide item entities near the dead boss until the spin finishes",
+        desc = "Hide item entities while a boss is alive or the case opening is on screen",
     )
     private val spinDuration by NumberSetting(
         "Spin Duration",
@@ -89,18 +90,21 @@ object BossSlots : Module(
     @Volatile
     private var inRiftCached = false
 
+    @Volatile
+    private var hideItemsCached = false
+
     private val pendingDrops = mutableListOf<VampireDrop>()
     private val hidden = mutableListOf<Component>()
     private var suppressingChat = false
 
     /**
-     * Called from the entity-render mixin. Hides every item entity while in
-     * the Rift, no fight tracking involved.
+     * Called from the entity-render mixin. Hides every item entity while a
+     * boss is alive or the case opening is on screen.
      */
     @JvmStatic
     fun shouldHideItemEntities(entity: Entity): Boolean {
         if (!enabled || !hideItems) return false
-        if (!inRiftCached) return false
+        if (!hideItemsCached) return false
         return entity is ItemEntity
     }
 
@@ -181,6 +185,8 @@ object BossSlots : Module(
 
         on<TickEvent.Server> {
             inRiftCached = LocationUtils.currentArea == Island.Rift
+            hideItemsCached = inRiftCached &&
+                (SlayerUtils.boss != null || mc.screen is BossDropsSpinner || spinning || collecting)
             if (collecting && !spinning && collectingSince != 0L &&
                 System.currentTimeMillis() - collectingSince > COLLECT_TIMEOUT_MS
             ) {
@@ -283,6 +289,7 @@ object BossSlots : Module(
             spinning = false
             screen = null
             inRiftCached = false
+            hideItemsCached = false
             pendingDrops.clear()
             hidden.clear()
             suppressingChat = false
