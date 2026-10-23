@@ -108,9 +108,10 @@ object SlayerUtils {
         boss?.let {
             if (it.isDeadOrDying) {
                 // boss die
+                val deathPos = it.position()
                 this.boss = null
                 this.timer = null
-                SlayerEvent.Death().postAndCatch()
+                SlayerEvent.Death(deathPos).postAndCatch()
             }
             
             else if (!it.isAlive) {
