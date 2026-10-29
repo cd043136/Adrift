@@ -14,7 +14,7 @@ import net.minecraft.client.player.RemotePlayer
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.EntityTypes
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.level.Level
 
@@ -39,7 +39,7 @@ object SlayerUtils {
         on<LevelEvent.Load> { reset() }
 
         onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
-            if (type != EntityType.PLAYER) return@onReceive
+            if (type != EntityTypes.PLAYER) return@onReceive
             val id = id
             val now = System.currentTimeMillis()
             Minecraft.getInstance().execute {

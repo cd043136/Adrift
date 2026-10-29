@@ -36,26 +36,21 @@ dependencies {
 
 loom {
     runConfigs.named("client") {
-        isIdeConfigGenerated = true
-        vmArgs.addAll(
-            arrayOf(
-                "-Dmixin.debug.export=true",
-                "-Ddevauth.enabled=true",
-                "-Ddevauth.account=main",
-                "-XX:+IgnoreUnrecognizedVMOptions",
-                "-XX:+AllowEnhancedClassRedefinition"
-            )
+        generateRunConfig = true
+        jvmArguments.addAll(
+            "-Dmixin.debug.export=true",
+            "-Ddevauth.enabled=true",
+            "-Ddevauth.account=main",
+            "-XX:+IgnoreUnrecognizedVMOptions",
+            "-XX:+AllowEnhancedClassRedefinition"
         )
+        jvmArguments.add(provider {
+            "-javaagent:${configurations.compileClasspath.get().find { it.name.contains("sponge-mixin") }}"
+        })
     }
 
     runConfigs.named("server") {
-        isIdeConfigGenerated = false
-    }
-}
-
-afterEvaluate {
-    loom.runs.named("client") {
-        vmArg("-javaagent:${configurations.compileClasspath.get().find { it.name.contains("sponge-mixin") }}")
+        generateRunConfig = false
     }
 }
 

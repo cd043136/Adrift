@@ -41,7 +41,7 @@ object SlayerDrops : Module(
         BURGER("McGrubber", ChatFormatting.DARK_PURPLE);
 
         val color: TextColor? get() = TextColor.fromLegacyFormat(formatting)
-        val literal: String get() = "§${formatting.char}$plain"
+        val literal: String get() = "$formatting$plain"
 
         fun matches(piece: Component): Boolean {
             val text = piece.string
@@ -52,7 +52,7 @@ object SlayerDrops : Module(
 
         fun rename(text: String): String {
             val replacement = renameTo ?: return text
-            return text.replace(plain, replacement).replace(literal, "§${formatting.char}$replacement")
+            return text.replace(plain, replacement).replace(literal, "$formatting$replacement")
         }
     }
 
@@ -75,7 +75,7 @@ object SlayerDrops : Module(
                     rebuilt.append(Component.literal(out).withStyle(piece.style))
                 }
                 cancel()
-                mc.schedule { mc.gui.chat.addClientSystemMessage(rebuilt) }
+                mc.schedule { mc.gui.hud.chat.addClientSystemMessage(rebuilt) }
                 displayRenamed = true
             }
 

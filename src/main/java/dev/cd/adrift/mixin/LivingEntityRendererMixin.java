@@ -90,13 +90,12 @@ public abstract class LivingEntityRendererMixin {
                 OverlayTexture.NO_OVERLAY,
                 BossHighlight.fillColorFor(entity),
                 null,
-                0,
-                null
+                0
             );
         }
-        // Depth-tested glow: textured first pass tinted toward the glow
-        // colour (any leftovers blend in), flat opaque second pass via the
-        // outline buffer wrapper. Skins keep alpha cutout in both.
+        // Depth-tested glow: outline types only go to the outline pass,
+        // tinted with the outline colour. Skins keep alpha cutout.
+        int glow = BossHighlight.glowColorFor(entity);
         submitNodeCollector.submitModel(
             rawModel,
             state,
@@ -104,10 +103,9 @@ public abstract class LivingEntityRendererMixin {
             outline,
             state.lightCoords,
             OverlayTexture.NO_OVERLAY,
-            BossHighlight.glowColorFor(entity),
+            glow,
             null,
-            BossHighlight.glowColorFor(entity),
-            null
+            glow
         );
         poseStack.popPose();
         ci.cancel();

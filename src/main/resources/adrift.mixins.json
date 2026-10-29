@@ -15,8 +15,6 @@
     "MinecraftMixin",
     "EntityRendererMixin",
     "LevelRendererMixin",
-    "LivingEntityRendererMixin",
-    "OutlineBufferSourceMixin",
-    "FeatureRenderDispatcherMixin"
+    "LivingEntityRendererMixin"
   ]
 }

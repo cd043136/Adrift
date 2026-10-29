@@ -68,22 +68,22 @@ object RenderUtils {
         x2: Double, y2: Double, z2: Double,
         x3: Double, y3: Double, z3: Double
     ) {
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position()
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
         val renderType = if (depth) RenderTypes.debugFilledBox() else CustomRenderType.QUADS_ESP
-        val buffer = context.bufferSource().getBuffer(renderType)
-        val pose = context.poseStack().last()
         val rgba = colour.rgba
         val cx = camera.x
         val cy = camera.y
         val cz = camera.z
 
-        fun vertex(x: Double, y: Double, z: Double) {
-            buffer.addVertex(pose, (x - cx).toFloat(), (y - cy).toFloat(), (z - cz).toFloat()).setColor(rgba)
-        }
+        context.submitNodeCollector().submitCustomGeometry(context.poseStack(), renderType) { pose, buffer ->
+            fun vertex(x: Double, y: Double, z: Double) {
+                buffer.addVertex(pose, (x - cx).toFloat(), (y - cy).toFloat(), (z - cz).toFloat()).setColor(rgba)
+            }
 
-        vertex(x0, y0, z0)
-        vertex(x1, y1, z1)
-        vertex(x2, y2, z2)
-        vertex(x3, y3, z3)
+            vertex(x0, y0, z0)
+            vertex(x1, y1, z1)
+            vertex(x2, y2, z2)
+            vertex(x3, y3, z3)
+        }
     }
 }
