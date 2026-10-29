@@ -1,17 +1,16 @@
 package dev.cd.adrift.utils
 
-import com.odtheking.odin.events.RenderEvent
+import com.odtheking.odin.events.RenderExtractEvent
 import com.odtheking.odin.utils.Color
 import com.odtheking.odin.utils.render.CustomRenderType
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.rendertype.RenderTypes
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
 import kotlin.math.sqrt
 
 object RenderUtils {
-    fun RenderEvent.Extract.drawFilledQuad(
+    fun RenderExtractEvent.drawFilledQuad(
         start: Vec3,
         end: Vec3,
         width: Double,
@@ -36,7 +35,7 @@ object RenderUtils {
         )
     }
 
-    fun RenderEvent.Extract.drawFlatSquare(
+    fun RenderExtractEvent.drawFlatSquare(
         centerX: Double,
         centerZ: Double,
         y: Double,
@@ -60,7 +59,7 @@ object RenderUtils {
     fun tintBoxes(shape: VoxelShape, x: Int, y: Int, z: Int, epsilon: Double = 0.002): List<AABB> =
         shape.toAabbs().map { it.move(x.toDouble(), y.toDouble(), z.toDouble()).inflate(epsilon) }
 
-    private fun RenderEvent.Extract.emitQuad(
+    private fun RenderExtractEvent.emitQuad(
         colour: Color,
         depth: Boolean,
         x0: Double, y0: Double, z0: Double,
@@ -69,7 +68,13 @@ object RenderUtils {
         x3: Double, y3: Double, z3: Double
     ) {
         val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
-        val renderType = if (depth) RenderTypes.debugFilledBox() else CustomRenderType.QUADS_ESP
+        val opaque = colour.alphaFloat >= 0.999f
+        val renderType = when {
+            depth && opaque -> CustomRenderType.QUADS_OPAQUE
+            depth -> CustomRenderType.QUADS_TRANSLUCENT
+            opaque -> CustomRenderType.QUADS_ESP
+            else -> CustomRenderType.QUADS_TRANSLUCENT_ESP
+        }
         val rgba = colour.rgba
         val cx = camera.x
         val cy = camera.y
