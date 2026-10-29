@@ -1,8 +1,8 @@
 # Adrift
 
-Odin addon focused mainly on Rift & vampire slayer features
+Odin addon focused mainly on Rift & vampire slayer features. MC 26.3 port
 
-> Requires [Odin](https://modrinth.com/mod/odin) 
+> Requires [Odin 0.4.0](https://modrinth.com/mod/odin)
 
 ## Features
 
