@@ -20,7 +20,7 @@ public final class RenderDepth {
     }
 
     public static boolean copySceneDepth() {
-        if (!BossHighlight.isEntityActive()) return false;
+        if (!BossHighlight.hasEntityTargets()) return false;
         if (!RenderSystem.isOnRenderThread()) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return false;

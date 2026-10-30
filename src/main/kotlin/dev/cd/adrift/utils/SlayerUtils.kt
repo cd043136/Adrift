@@ -35,7 +35,7 @@ object SlayerUtils {
     var lootshareBoss: RemotePlayer? = null
 
     init {
-        on<TickEvent.Server> { tick() }
+        on<TickEvent.Server> { Minecraft.getInstance().execute { tick() } }
         on<LevelEvent.Load> { reset() }
 
         onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
@@ -87,6 +87,8 @@ object SlayerUtils {
         retrySpawnBind()
 
         val boss = this.boss
+
+        if (timer?.isRemoved == true) timer = null
 
         // fetch timer stand
         if (boss != null && timer == null) {

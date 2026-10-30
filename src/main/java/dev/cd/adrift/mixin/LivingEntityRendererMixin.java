@@ -50,6 +50,7 @@ public abstract class LivingEntityRendererMixin {
         CallbackInfo ci
     ) {
         if (!(state instanceof AvatarRenderState avatar)) return;
+        if (!BossHighlight.hasEntityTargets()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         Entity entity = mc.level.getEntity(avatar.id);
@@ -97,6 +98,7 @@ public abstract class LivingEntityRendererMixin {
         // Depth-tested glow: textured first pass tinted toward the glow
         // colour (any leftovers blend in), flat opaque second pass via the
         // outline buffer wrapper. Skins keep alpha cutout in both.
+        int glow = BossHighlight.glowColorFor(entity);
         submitNodeCollector.submitModel(
             rawModel,
             state,
@@ -104,9 +106,9 @@ public abstract class LivingEntityRendererMixin {
             outline,
             state.lightCoords,
             OverlayTexture.NO_OVERLAY,
-            BossHighlight.glowColorFor(entity),
+            glow,
             null,
-            BossHighlight.glowColorFor(entity),
+            glow,
             null
         );
         poseStack.popPose();
