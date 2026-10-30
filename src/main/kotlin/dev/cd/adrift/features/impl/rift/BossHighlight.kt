@@ -91,8 +91,15 @@ object BossHighlight : Module(
 
     @JvmStatic
     fun isEntityTarget(entity: Entity?): Boolean {
-        if (entity == null || !enabled || (mode != 3 && mode != 4)) return false
-        return targets().any { it === entity }
+        if (entity !is RemotePlayer || !isEntityActive() || !entity.isAlive) return false
+        return entity === SlayerUtils.boss || (onOtherBoss && entity === SlayerUtils.lootshareBoss)
+    }
+
+    @JvmStatic
+    fun hasEntityTargets(): Boolean {
+        if (!isEntityActive()) return false
+        if (SlayerUtils.boss?.isAlive == true) return true
+        return onOtherBoss && SlayerUtils.lootshareBoss?.isAlive == true
     }
 
     @JvmStatic

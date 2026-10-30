@@ -12,7 +12,6 @@
     "requireAnnotations": true
   },
   "client": [
-    "MinecraftMixin",
     "EntityRendererMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin",

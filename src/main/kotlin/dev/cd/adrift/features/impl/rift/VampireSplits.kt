@@ -122,38 +122,8 @@ object VampireSplits : Module(
             startDamage()
         }
 
-        on<TickEvent.Server> {
-            if (pendingOutcome) {
-                pendingTicks += 1
-                if (pendingTicks > PENDING_TIMEOUT_TICKS) reset()
-                return@on
-            }
-            if (!active) return@on
-
-            val boss = SlayerUtils.boss
-            if (boss == null || !boss.isAlive) {
-                freezeActive()
-                pendingOutcome = true
-                pendingTicks = 0
-                return@on
-            }
-
-            val inMania = SlayerUtils.timer?.plainTextName?.contains("MANIA") == true
-            if (inMania && !hasMania) {
-                hasMania = true
-                maniaCount += 1
-                freezeActive()
-                splits += Split(Phase.MANIA, maniaCount)
-            }
-
-            else if (!inMania && hasMania) {
-                hasMania = false
-                freezeActive()
-                startDamage()
-            }
-
-            if (splits.lastOrNull()?.running == true) splits.last().ticks += 1
-        }
+        // Odin posts server ticks on the netty thread, keep split state on the main thread with the other handlers.
+        on<TickEvent.Server> { mc.execute { onServerTick() } }
 
         on<MessageEvent.Chat> {
             if (!active && !pendingOutcome) return@on
@@ -170,6 +140,40 @@ object VampireSplits : Module(
 
         on<LevelEvent.Load> { reset() }
         on<LevelEvent.Unload> { reset() }
+    }
+
+    private fun onServerTick() {
+        if (pendingOutcome) {
+            pendingTicks += 1
+            if (pendingTicks > PENDING_TIMEOUT_TICKS) reset()
+            return
+        }
+        if (!active) return
+
+        val boss = SlayerUtils.boss
+        if (boss == null || !boss.isAlive) {
+            freezeActive()
+            pendingOutcome = true
+            pendingTicks = 0
+            return
+        }
+
+        val inMania = SlayerUtils.timer?.plainTextName?.contains("MANIA") == true
+        if (inMania && !hasMania) {
+            hasMania = true
+            maniaCount += 1
+            freezeActive()
+            splits += Split(Phase.MANIA, maniaCount)
+        }
+
+        else if (!inMania && hasMania) {
+            hasMania = false
+            freezeActive()
+            startDamage()
+        }
+
+        val current = splits.lastOrNull()
+        if (current?.running == true) current.ticks += 1
     }
 
     private fun startDamage() {

@@ -40,63 +40,66 @@ object TwinclawsFix : Module(
         desc = "Sound volume"
     )
 
+    private val PLING = SoundEvents.NOTE_BLOCK_PLING.value().location()
+
+    @Volatile private var inTwinclaws = false
+
     private var prevDisplayed: Float? = null
     private val played = mutableSetOf<Float>()
 
     init {
         onReceive<ClientboundSoundPacket> { event ->
             // todo: option to enable on other bosses maybe
-            val temp = SlayerUtils.boss ?: SlayerUtils.lootshareBoss ?: return@onReceive
-            val t = mc.level?.getEntity(temp.id + 2) ?: return@onReceive
-
-            if (!t.plainTextName.contains("TWINCLAWS")) return@onReceive
-            sound.value().location().toString()
-                .takeIf { it.contains("note_block.pling") }
-                ?: return@onReceive
+            if (!inTwinclaws || sound.value().location() != PLING) return@onReceive
             event.cancel()
         }
 
-        on<TickEvent.Server> {
-            val temp = SlayerUtils.boss ?: SlayerUtils.lootshareBoss ?: run { resetTwinclawState(); return@on }
-            val t = mc.level?.getEntity(temp.id + 2) ?: run { resetTwinclawState(); return@on }
+        on<TickEvent.Server> { mc.execute { onServerTick() } }
+    }
 
-            if (!t.plainTextName.contains("TWINCLAWS")) {
-                resetTwinclawState()
-                return@on
-            }
-            val displayed = twinclawsTimerRegex.find(t.plainTextName)
-                ?.groupValues?.get(1)?.toFloatOrNull()
-                ?: return@on
+    override fun onDisable() {
+        super.onDisable()
+        resetTwinclawState()
+    }
 
-            val prev = prevDisplayed
-            if (prev == null) {
-                prevDisplayed = displayed
-                return@on
-            }
-            if (displayed > prev) played.clear()
+    private fun onServerTick() {
+        val temp = SlayerUtils.boss ?: SlayerUtils.lootshareBoss ?: return resetTwinclawState()
+        val name = mc.level?.getEntity(temp.id + 2)?.plainTextName ?: return resetTwinclawState()
 
-            for ((threshold, pitch) in twinclawSounds) {
-                if (threshold in displayed..<prev && played.add(threshold)) {
-                    mc.execute {
-                        val vol = volume.toFloat()
+        if (!name.contains("TWINCLAWS")) return resetTwinclawState()
+        inTwinclaws = true
 
-                        mc.soundManager.play(
-                            SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol.coerceAtMost(1.0f))
-                        )
+        val displayed = twinclawsTimerRegex.find(name)
+            ?.groupValues?.get(1)?.toFloatOrNull()
+            ?: return
 
-                        if (vol > 1.0f) {
-                            mc.soundManager.play(
-                                SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol - 1.0f)
-                            )
-                        }
-                    }
+        val prev = prevDisplayed
+        if (prev == null) {
+            prevDisplayed = displayed
+            return
+        }
+        if (displayed > prev) played.clear()
+
+        for ((threshold, pitch) in twinclawSounds) {
+            if (threshold in displayed..<prev && played.add(threshold)) {
+                val vol = volume.toFloat()
+
+                mc.soundManager.play(
+                    SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol.coerceAtMost(1.0f))
+                )
+
+                if (vol > 1.0f) {
+                    mc.soundManager.play(
+                        SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_PLING.value(), pitch, vol - 1.0f)
+                    )
                 }
             }
-            prevDisplayed = displayed
         }
+        prevDisplayed = displayed
     }
 
     private fun resetTwinclawState() {
+        inTwinclaws = false
         prevDisplayed = null
         played.clear()
     }
