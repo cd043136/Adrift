@@ -158,9 +158,12 @@ object VampireHelper : Module(
         }
 
         on<LevelEvent.Load> { resetTwinclawsState() }
-        on<LevelEvent.Unload> { resetTwinclawsState() }
+        on<LevelEvent.Unload> {
+            resetTwinclawsState()
+            ichors.clear()
+        }
 
-        on<TickEvent.Server> { pollTwinclaws() }
+        on<TickEvent.Server> { mc.execute { pollTwinclaws() } }
 
         HudElementRegistry.attachElementAfter(
             VanillaHudElements.MISC_OVERLAYS,

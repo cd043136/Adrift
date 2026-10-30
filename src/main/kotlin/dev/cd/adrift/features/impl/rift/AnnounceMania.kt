@@ -33,26 +33,28 @@ object AnnounceMania : Module(
 
     init {
         // only trigger on our own boss
-        on<TickEvent.Server> {
-            val t = SlayerUtils.timer
+        on<TickEvent.Server> { mc.execute { onServerTick() } }
+    }
 
-            if (t == null) {
-                if (mania > 0) mania = 0
-                return@on
+    private fun onServerTick() {
+        val t = SlayerUtils.timer
+
+        if (t == null) {
+            if (mania > 0) mania = 0
+            return
+        }
+
+        if (t.plainTextName.contains("MANIA")) {
+            if (!hasMania) {
+                hasMania = true
+                mania += 1
+
+                if (shouldAnnounce(mania)) sendCommand("pc Mania Phase $mania")
             }
+        }
 
-            if (t.plainTextName.contains("MANIA")) {
-                if (!hasMania) {
-                    hasMania = true
-                    mania += 1
-
-                    if (shouldAnnounce(mania)) sendCommand("pc Mania Phase $mania")
-                }
-            }
-
-            else {
-                if (hasMania) hasMania = false
-            }
+        else {
+            if (hasMania) hasMania = false
         }
     }
 

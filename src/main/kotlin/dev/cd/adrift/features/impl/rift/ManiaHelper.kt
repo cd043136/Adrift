@@ -115,6 +115,7 @@ object ManiaHelper : Module(
     private var worldScan: WorldScan? = null
     private val batch = ArrayList<ManiaUpdate>()
     private val surfaceCache = SurfaceCache()
+    private var surfaceY = Int.MIN_VALUE
     private val colours = Array(ManiaBlock.entries.size) { Colors.WHITE }
     private var debugWriter: BufferedWriter? = null
     private var debugWriterFailed = false
@@ -165,12 +166,13 @@ object ManiaHelper : Module(
             if (fromCentreX * fromCentreX + fromCentreZ * fromCentreZ > MAX_PLAYER_DISTANCE_SQ) return@on
 
             val size = squareSize
-            surfaceCache.sync(s, player.blockY)
+            val blockTint = style == RenderStyle.BLOCK_TINT
+            if (player.onGround() || surfaceY == Int.MIN_VALUE) surfaceY = player.blockY
+            surfaceCache.sync(s, surfaceY, blockTint)
             val radius = renderRadius
             val radiusSq = if (radius >= MAX_RENDER_RADIUS) Double.MAX_VALUE else (radius * radius).toDouble()
             val greenOnly = safeOnly
             val skipMatching = onlyDifferent
-            val blockTint = style == RenderStyle.BLOCK_TINT
             val feetY = player.y
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
 
@@ -289,6 +291,7 @@ object ManiaHelper : Module(
         session = null
         sessionLevel = null
         surfaceCache.clear()
+        surfaceY = Int.MIN_VALUE
         s.finish(reason)
         closeDebugLog()
     }
@@ -386,12 +389,14 @@ object ManiaHelper : Module(
         private var owner: ManiaSession? = null
         private var version = -1
         private var playerBlockY = Int.MIN_VALUE
+        private var withTints = false
 
-        fun sync(s: ManiaSession, blockY: Int) {
-            if (s === owner && s.centreVersion == version && blockY == playerBlockY) return
+        fun sync(s: ManiaSession, blockY: Int, tints: Boolean) {
+            if (s === owner && s.centreVersion == version && blockY == playerBlockY && tints == withTints) return
             owner = s
             version = s.centreVersion
             playerBlockY = blockY
+            withTints = tints
             valid.fill(false)
         }
 
@@ -421,7 +426,7 @@ object ManiaHelper : Module(
                 if (shape.isEmpty) continue
                 top = y + shape.max(Direction.Axis.Y)
                 type = ManiaBlock.of(state)
-                tint = tintBoxes(shape, x, y, z)
+                if (withTints) tint = tintBoxes(shape, x, y, z)
                 break
             }
             tops[i] = top
