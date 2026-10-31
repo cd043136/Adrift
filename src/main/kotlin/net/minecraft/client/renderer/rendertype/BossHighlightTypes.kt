@@ -1,12 +1,12 @@
 package net.minecraft.client.renderer.rendertype
 
+import com.mojang.blaze3d.PrimitiveTopology
 import com.mojang.blaze3d.pipeline.BlendFunction
 import com.mojang.blaze3d.pipeline.ColorTargetState
 import com.mojang.blaze3d.pipeline.DepthStencilState
 import com.mojang.blaze3d.pipeline.RenderPipeline
-import com.mojang.blaze3d.shaders.UniformType
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.VertexFormat
+import net.minecraft.client.renderer.BindGroupLayouts
 import net.minecraft.resources.Identifier
 import net.minecraft.util.Util
 import java.util.function.Function
@@ -20,16 +20,17 @@ import java.util.function.Function
  * output itself is untextured flat colour.
  * `AFFECTS_OUTLINE` keeps the vanilla second pass to the outline target,
  * which draws the opaque glow border (depth-tested via copied scene depth,
- * see OutlineBufferSourceMixin).
+ * see FeatureRenderDispatcherMixin).
  */
 object BossHighlightTypes {
     private val FILL_PIPELINE: RenderPipeline = RenderPipeline.builder()
-        .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-        .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+        .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+        .withBindGroupLayout(BindGroupLayouts.PROJECTION)
         .withVertexShader(Identifier.fromNamespaceAndPath("adrift", "core/bosshighlight_fill"))
         .withFragmentShader(Identifier.fromNamespaceAndPath("adrift", "core/bosshighlight_fill"))
-        .withSampler("Sampler0")
-        .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
+        .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+        .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+        .withPrimitiveTopology(PrimitiveTopology.QUADS)
         .withColorTargetState(ColorTargetState(BlendFunction.TRANSLUCENT))
         .withDepthStencilState(DepthStencilState.DEFAULT)
         .withCull(false)
@@ -43,12 +44,13 @@ object BossHighlightTypes {
      * scene depth actually occludes.
      */
     private val OUTLINE_DEPTH_PIPELINE: RenderPipeline = RenderPipeline.builder()
-        .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-        .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+        .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+        .withBindGroupLayout(BindGroupLayouts.PROJECTION)
         .withVertexShader("core/rendertype_outline")
         .withFragmentShader("core/rendertype_outline")
-        .withSampler("Sampler0")
-        .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
+        .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+        .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+        .withPrimitiveTopology(PrimitiveTopology.QUADS)
         .withDepthStencilState(DepthStencilState.DEFAULT)
         .withCull(false)
         .withLocation("pipeline/bosshighlight_outline_depth")

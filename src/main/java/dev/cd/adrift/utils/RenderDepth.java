@@ -7,8 +7,8 @@ import dev.cd.adrift.mixin.LevelRendererMixin;
 import net.minecraft.client.Minecraft;
 
 /**
- * Shared depth-copy for the outline target. Safe to call from either
- * outline flush point; returns false when there was nothing to copy.
+ * Depth-copy for the outline target, called before the outline pass;
+ * returns false when there was nothing to copy.
  *
  * <p>Lives outside the mixin package on purpose: Mixin refuses to load
  * non-mixin classes from a mixin package when they are referenced from
@@ -25,7 +25,7 @@ public final class RenderDepth {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return false;
         RenderTarget outline = ((LevelRendererMixin) mc.levelRenderer).adrift$getEntityOutlineTarget();
-        RenderTarget main = mc.getMainRenderTarget();
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (outline == null || main == null) return false;
         if (outline.width <= 0 || outline.height <= 0) return false;
         if (outline.width != main.width || outline.height != main.height) return false;

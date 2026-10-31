@@ -15,7 +15,6 @@
     "EntityRendererMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin",
-    "OutlineBufferSourceMixin",
     "FeatureRenderDispatcherMixin"
   ]
 }

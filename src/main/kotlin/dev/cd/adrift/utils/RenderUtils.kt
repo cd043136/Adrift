@@ -1,17 +1,16 @@
 package dev.cd.adrift.utils
 
-import com.odtheking.odin.events.RenderEvent
+import com.odtheking.odin.events.RenderExtractEvent
 import com.odtheking.odin.utils.Color
 import com.odtheking.odin.utils.render.CustomRenderType
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.rendertype.RenderTypes
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
 import kotlin.math.sqrt
 
 object RenderUtils {
-    fun RenderEvent.Extract.drawFilledQuad(
+    fun RenderExtractEvent.drawFilledQuad(
         start: Vec3,
         end: Vec3,
         width: Double,
@@ -36,7 +35,7 @@ object RenderUtils {
         )
     }
 
-    fun RenderEvent.Extract.drawFlatSquare(
+    fun RenderExtractEvent.drawFlatSquare(
         centerX: Double,
         centerZ: Double,
         y: Double,
@@ -60,7 +59,7 @@ object RenderUtils {
     fun tintBoxes(shape: VoxelShape, x: Int, y: Int, z: Int, epsilon: Double = 0.002): List<AABB> =
         shape.toAabbs().map { it.move(x.toDouble(), y.toDouble(), z.toDouble()).inflate(epsilon) }
 
-    private fun RenderEvent.Extract.emitQuad(
+    private fun RenderExtractEvent.emitQuad(
         colour: Color,
         depth: Boolean,
         x0: Double, y0: Double, z0: Double,
@@ -68,22 +67,28 @@ object RenderUtils {
         x2: Double, y2: Double, z2: Double,
         x3: Double, y3: Double, z3: Double
     ) {
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position()
-        val renderType = if (depth) RenderTypes.debugFilledBox() else CustomRenderType.QUADS_ESP
-        val buffer = context.bufferSource().getBuffer(renderType)
-        val pose = context.poseStack().last()
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
+        val opaque = colour.alphaFloat >= 0.999f
+        val renderType = when {
+            depth && opaque -> CustomRenderType.QUADS_OPAQUE
+            depth -> CustomRenderType.QUADS_TRANSLUCENT
+            opaque -> CustomRenderType.QUADS_ESP
+            else -> CustomRenderType.QUADS_TRANSLUCENT_ESP
+        }
         val rgba = colour.rgba
         val cx = camera.x
         val cy = camera.y
         val cz = camera.z
 
-        fun vertex(x: Double, y: Double, z: Double) {
-            buffer.addVertex(pose, (x - cx).toFloat(), (y - cy).toFloat(), (z - cz).toFloat()).setColor(rgba)
-        }
+        context.submitNodeCollector().submitCustomGeometry(context.poseStack(), renderType) { pose, buffer ->
+            fun vertex(x: Double, y: Double, z: Double) {
+                buffer.addVertex(pose, (x - cx).toFloat(), (y - cy).toFloat(), (z - cz).toFloat()).setColor(rgba)
+            }
 
-        vertex(x0, y0, z0)
-        vertex(x1, y1, z1)
-        vertex(x2, y2, z2)
-        vertex(x3, y3, z3)
+            vertex(x0, y0, z0)
+            vertex(x1, y1, z1)
+            vertex(x2, y2, z2)
+            vertex(x3, y3, z3)
+        }
     }
 }

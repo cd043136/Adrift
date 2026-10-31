@@ -8,16 +8,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Seeds outline depth before solid draws flush.
- * Runs after opaque terrain is already in `main` depth but before any solid
- * feature (including our textured outline first pass) draws, so walls
- * occlude glow even though entities are not in the copied depth yet.
+ * Copies scene depth into the outline target before the outline pass.
+ * The outline pass runs after all solid and translucent features, so `main`
+ * depth is complete by then and includes entities as well as terrain.
  */
-@Mixin(FeatureRenderDispatcher.class)
+@Mixin(FeatureRenderDispatcher.PreparedFrame.class)
 public abstract class FeatureRenderDispatcherMixin {
 
-    @Inject(method = "renderSolidFeatures", at = @At("HEAD"))
-    private void adrift$seedOutlineDepth(CallbackInfo ci) {
+    @Inject(method = "executeOutline", at = @At("HEAD"))
+    private void adrift$copySceneDepth(CallbackInfo ci) {
         RenderDepth.copySceneDepth();
     }
 }

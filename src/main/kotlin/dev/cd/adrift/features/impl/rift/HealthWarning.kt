@@ -1,6 +1,6 @@
 package dev.cd.adrift.features.impl.rift
 
-import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
+import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
 import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
@@ -37,10 +37,11 @@ object HealthWarning : Module(
         desc = "Hue preserved at the screen edges",
         allowAlpha = false
     ).withDependency { vignette }
+    private enum class SoundMode { NONE, ONCE, REPEAT }
+
     private val playSound by SelectorSetting(
         "Sound",
-        default = "None",
-        options = listOf("None", "Once", "Repeat"),
+        default = SoundMode.NONE,
         desc = "Plays a pling sound when low hp"
     )
     private const val HP_THRESHOLD = 6f
@@ -58,7 +59,7 @@ object HealthWarning : Module(
         )
 
         on<TickEvent.End> {
-            if (!inBossFight() || playSound == 0) {
+            if (!inBossFight() || playSound == SoundMode.NONE) {
                 tickCounter = 0
                 soundPlayed = false
                 return@on
@@ -71,7 +72,7 @@ object HealthWarning : Module(
                 return@on
             }
 
-            if (playSound == 1) {
+            if (playSound == SoundMode.ONCE) {
                 if (soundPlayed) return@on
                 soundPlayed = true
             }

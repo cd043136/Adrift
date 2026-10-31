@@ -34,8 +34,7 @@ object TwinclawsFix : Module(
     private val volume by NumberSetting(
         "Volume",
         default = 1.0,
-        min = 0.5,
-        max = 2.0,
+        range = 0.5..2.0,
         increment = 0.1,
         desc = "Sound volume"
     )

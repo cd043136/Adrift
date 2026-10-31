@@ -1,13 +1,14 @@
 package dev.cd.adrift.features.impl.rift
 
-import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
+import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
 import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
-import com.odtheking.odin.events.RenderEvent
+import com.odtheking.odin.events.RenderExtractEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.Color
+import com.odtheking.odin.utils.render.BoxStyle
 import com.odtheking.odin.utils.render.drawStyledBox
 import com.odtheking.odin.utils.renderBoundingBox
 import dev.cd.adrift.utils.Category
@@ -39,10 +40,21 @@ object BossHighlight : Module(
         default = false,
         desc = "Change colour when it's steakable, overrides Dynamic colour"
     )
+    private enum class RenderMode(private val label: String, val boxStyle: BoxStyle?) {
+        FILLED("Filled", BoxStyle.FILLED),
+        BOX("Box", BoxStyle.OUTLINE),
+        FILLED_BOX("Filled Box", BoxStyle.FILLED_OUTLINE),
+        OUTLINE("Outline", null),
+        CUSTOM("Custom", null);
+
+        val isEntity: Boolean get() = this == OUTLINE || this == CUSTOM
+
+        override fun toString() = label
+    }
+
     private val mode by SelectorSetting(
         name = "Render Mode",
-        default = "Box",
-        options = listOf("Filled", "Box", "Filled Box", "Outline", "Custom"),
+        default = RenderMode.BOX,
         desc = ""
     )
 
@@ -66,9 +78,9 @@ object BossHighlight : Module(
     ).withDependency { steakColouring }
 
     init {
-        on<RenderEvent.Extract> {
-            if (!isBoxMode()) return@on
-            targets().forEach { drawStyledBox(it.renderBoundingBox, baseColorFor(it), mode, true) }
+        on<RenderExtractEvent> {
+            val style = mode.boxStyle ?: return@on
+            targets().forEach { drawStyledBox(it.renderBoundingBox, baseColorFor(it), style, true) }
         }
     }
 
@@ -81,13 +93,13 @@ object BossHighlight : Module(
     }
 
     @JvmStatic
-    fun isBoxMode(): Boolean = mode <= 2
+    fun isBoxMode(): Boolean = mode.boxStyle != null
 
     @JvmStatic
-    fun isCustomMode(): Boolean = mode == 4
+    fun isCustomMode(): Boolean = mode == RenderMode.CUSTOM
 
     @JvmStatic
-    fun isEntityActive(): Boolean = enabled && (mode == 3 || mode == 4)
+    fun isEntityActive(): Boolean = enabled && mode.isEntity
 
     @JvmStatic
     fun isEntityTarget(entity: Entity?): Boolean {
