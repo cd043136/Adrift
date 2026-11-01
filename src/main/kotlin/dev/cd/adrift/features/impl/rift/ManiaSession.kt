@@ -24,8 +24,13 @@ internal enum class ManiaBlock(val symbol: String) {
 
     companion object {
         fun of(state: BlockState): ManiaBlock = when (state.block) {
-            Blocks.GREEN_TERRACOTTA -> GREEN
+            //? if >=26.2 {
+            Blocks.DYED_TERRACOTTA.green() -> GREEN
+            Blocks.DYED_TERRACOTTA.red() -> RED
+            //?} else {
+            /*Blocks.GREEN_TERRACOTTA -> GREEN
             Blocks.RED_TERRACOTTA -> RED
+            *///?}
             Blocks.REDSTONE_BLOCK -> REDSTONE
             Blocks.COAL_BLOCK -> COAL
             else -> NONE

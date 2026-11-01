@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "dev.cd.adrift.mixin",
+  "plugin": "dev.cd.adrift.AdriftMixinPlugin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
   ],
@@ -14,8 +15,6 @@
   "client": [
     "EntityRendererMixin",
     "LevelRendererMixin",
-    "LivingEntityRendererMixin",
-    "OutlineBufferSourceMixin",
-    "FeatureRenderDispatcherMixin"
+    "LivingEntityRendererMixin"
   ]
 }

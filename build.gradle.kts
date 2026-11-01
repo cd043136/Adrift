@@ -5,7 +5,10 @@ plugins {
     kotlin("jvm")
 }
 
-version = property("mod_version")!!
+fun prop(key: String): String = sc.properties[key]
+
+val minecraftVersion = sc.current.version
+version = prop("mod.version")
 
 repositories {
     mavenCentral()
@@ -15,17 +18,17 @@ repositories {
 }
 
 dependencies {
-    minecraft("com.mojang:minecraft:${property("minecraft_version")}")
-    implementation("net.fabricmc:fabric-loader:${property("loader_version")}")
-    implementation("net.fabricmc:fabric-language-kotlin:${property("fabric_kotlin_version")}")
-    implementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
+    minecraft("com.mojang:minecraft:$minecraftVersion")
+    implementation("net.fabricmc:fabric-loader:${prop("deps.fabric_loader")}")
+    implementation("net.fabricmc:fabric-language-kotlin:${prop("deps.fabric_kotlin")}")
+    implementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric_api")}")
 
-    runtimeOnly("me.djtheredstoner:DevAuth-fabric:${property("devauth_version")}")
-    implementation("maven.modrinth:odin:${property("odin_version")}")
+    runtimeOnly("me.djtheredstoner:DevAuth-fabric:${prop("deps.devauth")}")
+    implementation("maven.modrinth:odin:${prop("deps.odin")}")
 
-    implementation("com.github.stivais:Commodore:${property("commodore_version")}")
+    implementation("com.github.stivais:Commodore:${prop("deps.commodore")}")
 
-    property("minecraft_lwjgl_version").let { lwjglVersion ->
+    prop("deps.lwjgl").let { lwjglVersion ->
         implementation("org.lwjgl:lwjgl-nanovg:$lwjglVersion")
 
         listOf("windows", "linux", "macos", "macos-arm64").forEach { os ->
@@ -36,33 +39,42 @@ dependencies {
 
 loom {
     runConfigs.named("client") {
-        isIdeConfigGenerated = true
-        vmArgs.addAll(
-            arrayOf(
-                "-Dmixin.debug.export=true",
-                "-Ddevauth.enabled=true",
-                "-Ddevauth.account=main",
-                "-XX:+IgnoreUnrecognizedVMOptions",
-                "-XX:+AllowEnhancedClassRedefinition"
-            )
+        generateRunConfig = true
+        // Shared between versions so DevAuth/options don't need setting up per version
+        runDir = "../../run"
+        jvmArguments.addAll(
+            "-Dmixin.debug.export=true",
+            "-Ddevauth.enabled=true",
+            "-Ddevauth.account=main",
+            "-XX:+IgnoreUnrecognizedVMOptions",
+            "-XX:+AllowEnhancedClassRedefinition"
         )
+        jvmArguments.add(provider {
+            "-javaagent:${configurations.compileClasspath.get().find { it.name.contains("sponge-mixin") }}"
+        })
     }
 
     runConfigs.named("server") {
-        isIdeConfigGenerated = false
-    }
-}
-
-afterEvaluate {
-    loom.runs.named("client") {
-        vmArg("-javaagent:${configurations.compileClasspath.get().find { it.name.contains("sponge-mixin") }}")
+        generateRunConfig = false
     }
 }
 
 tasks {
     processResources {
+        val props = mapOf(
+            "version" to project.version.toString(),
+            "mod_id" to prop("mod.id"),
+            "mod_name" to prop("mod.name"),
+            "mod_description" to prop("mod.description"),
+            "minecraft_version_range" to prop("mod.mc_compat"),
+            "loader_version" to prop("deps.fabric_loader"),
+            "fabric_api_version" to prop("deps.fabric_api"),
+            "fabric_kotlin_version" to prop("deps.fabric_kotlin"),
+            "odin_version" to prop("deps.odin"),
+        )
+        inputs.properties(props)
         filesMatching("fabric.mod.json") {
-            expand(getProperties())
+            expand(props)
         }
     }
 
@@ -79,10 +91,25 @@ tasks {
         options.encoding = "UTF-8"
         options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
     }
+
+    // Collects every version's jar into the root build/libs
+    register<Copy>("collectJar") {
+        group = "build"
+        from(jar.flatMap { it.archiveFile })
+        into(rootProject.layout.buildDirectory.dir("libs"))
+    }
+
+    build {
+        finalizedBy("collectJar")
+    }
 }
 
 base {
-    archivesName.set(project.property("archives_base_name") as String)
+    archivesName.set(prop("mod.id"))
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    archiveVersion.set("${project.version}-$minecraftVersion")
 }
 
 val targetJavaVersion = 25

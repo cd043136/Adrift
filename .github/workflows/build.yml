@@ -7,6 +7,8 @@ jobs:
     strategy:
       matrix:
         java: [ 25 ]
+        # quoted so YAML doesn't read them as numbers
+        minecraft: [ '26.1', '26.2', '26.3' ]
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
@@ -27,12 +29,10 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: build
-        run: ./gradlew build
+        run: ./gradlew :${{ matrix.minecraft }}:build
 
       - name: upload release jar
         uses: actions/upload-artifact@v7.0.1
         with:
-          path: |
-            build/libs/adrift-*.jar
-            !build/libs/adrift-*-sources.jar
+          path: build/libs/adrift-*-${{ matrix.minecraft }}.jar
           archive: false

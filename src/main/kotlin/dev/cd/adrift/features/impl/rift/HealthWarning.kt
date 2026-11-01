@@ -1,6 +1,9 @@
 package dev.cd.adrift.features.impl.rift
 
-import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
+//? if >=26.2 {
+import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
+//?} else
+//import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
 import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
@@ -37,12 +40,23 @@ object HealthWarning : Module(
         desc = "Hue preserved at the screen edges",
         allowAlpha = false
     ).withDependency { vignette }
+    private enum class SoundMode { NONE, ONCE, REPEAT }
+
+    //? if >=26.2 {
     private val playSound by SelectorSetting(
+        "Sound",
+        default = SoundMode.NONE,
+        desc = "Plays a pling sound when low hp"
+    )
+    //?} else {
+    /*private val playSoundIndex by SelectorSetting(
         "Sound",
         default = "None",
         options = listOf("None", "Once", "Repeat"),
         desc = "Plays a pling sound when low hp"
     )
+    private val playSound: SoundMode get() = SoundMode.entries[playSoundIndex]
+    *///?}
     private const val HP_THRESHOLD = 6f
     private const val INTERVAL = 4 // for repeating plings
     private val VIGNETTE_LOCATION = Identifier.withDefaultNamespace("textures/misc/vignette.png")
@@ -58,7 +72,7 @@ object HealthWarning : Module(
         )
 
         on<TickEvent.End> {
-            if (!inBossFight() || playSound == 0) {
+            if (!inBossFight() || playSound == SoundMode.NONE) {
                 tickCounter = 0
                 soundPlayed = false
                 return@on
@@ -71,7 +85,7 @@ object HealthWarning : Module(
                 return@on
             }
 
-            if (playSound == 1) {
+            if (playSound == SoundMode.ONCE) {
                 if (soundPlayed) return@on
                 soundPlayed = true
             }

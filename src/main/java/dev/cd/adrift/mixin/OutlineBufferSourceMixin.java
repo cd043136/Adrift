@@ -1,19 +1,21 @@
 package dev.cd.adrift.mixin;
 
-import dev.cd.adrift.utils.RenderDepth;
+// Only needed on 26.1, where the flat glow pass flushes separately from the solid batch.
+//? if <26.2 {
+/*import dev.cd.adrift.utils.RenderDepth;
 import net.minecraft.client.renderer.OutlineBufferSource;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
+/^*
  * Refreshes outline depth before the flat glow pass flushes.
  * Our depth-tested outline draws flush in two places: the textured first
  * pass with the solid batch (covered by {@code FeatureRenderDispatcherMixin}) and
  * the flat second pass here. By now `main` depth is complete, so this copy
  * includes entities as well as terrain.
- */
+ ^/
 @Mixin(OutlineBufferSource.class)
 public abstract class OutlineBufferSourceMixin {
 
@@ -22,3 +24,4 @@ public abstract class OutlineBufferSourceMixin {
         RenderDepth.copySceneDepth();
     }
 }
+*///?}

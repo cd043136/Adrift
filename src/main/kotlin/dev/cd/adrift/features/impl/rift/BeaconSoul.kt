@@ -26,8 +26,12 @@ object BeaconSoul : Module(
     private val waitTicks by NumberSetting(
         "Delay ticks",
         default = 10,
-        min = 5,
+        //? if >=26.2 {
+        range = 5..40,
+        //?} else {
+        /*min = 5,
         max = 40,
+        *///?}
         increment = 1,
         desc = "Ticks between sending messages (1s = 20t)"
     )

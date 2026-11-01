@@ -2,7 +2,13 @@
 
 Odin addon focused mainly on Rift & vampire slayer features
 
-> Requires [Odin](https://modrinth.com/mod/odin) 
+> Requires [Odin](https://modrinth.com/mod/odin)
+
+| Minecraft | Odin   |
+|-----------|--------|
+| 26.1      | 0.3.4+ |
+| 26.2      | 0.3.6+ |
+| 26.3      | 0.4.0+ |
 
 ## Features
 
@@ -80,3 +86,15 @@ Announce when you reach specific mania phase(s), useful for lootsharing
   - Ground skull alert/indicator
   - Nearby indicator
 - Damage counter?
+
+## Development
+
+Every supported Minecraft version is built from the same `src/` with [Stonecutter](https://stonecutter.kikugie.dev/).
+Version-specific code is wrapped in comments such as `//? if >=26.2 {`, and per-version dependencies
+(Fabric API, Odin, ...) live in `stonecutter.properties.toml`.
+
+- `./gradlew buildAll` builds every version into `build/libs/`; `./gradlew :26.2:build` builds one.
+- `./gradlew "Set active project to 26.1"` switches `src/` (and the IDE classpath) to another version.
+- Run `./gradlew "Reset active project"` before committing, so `src/` is committed in its 26.3 state.
+- Mixins that only exist on some versions are registered in `AdriftMixinPlugin` rather than `adrift.mixins.json`.
+- Odin API shims for older Odin versions go in `utils/OdinCompat.kt`.

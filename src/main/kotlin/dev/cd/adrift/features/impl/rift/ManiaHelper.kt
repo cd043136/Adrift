@@ -1,12 +1,18 @@
 package dev.cd.adrift.features.impl.rift
 
-import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
+//? if >=26.2 {
+import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
+//?} else
+//import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
 import com.odtheking.odin.clickgui.settings.impl.NumberSetting
 import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
 import com.odtheking.odin.events.LevelEvent
-import com.odtheking.odin.events.RenderEvent
+//? if >=26.2 {
+import com.odtheking.odin.events.RenderExtractEvent
+//?} else
+//import dev.cd.adrift.utils.RenderExtractEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.events.core.onReceive
@@ -49,24 +55,39 @@ object ManiaHelper : Module(
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0
     private const val SCAN_DELAY_TICKS = 40
     private const val TEXT_HEIGHT = 9
-    private const val BLOCK_TINT_INDEX = 1
     private const val PLANE_Y_OFFSET = 0.1
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
 
+    private enum class RenderStyle { PLANE, BLOCK_TINT }
+
+    //? if >=26.2 {
     private val style by SelectorSetting(
+        name = "Render style",
+        default = RenderStyle.PLANE,
+        desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
+    )
+    private val squareSize by NumberSetting("Square size", 0.5, 0.1..1.0, 0.05, desc = "Side length of the plane squares")
+    //?} else {
+    /*private val styleIndex by SelectorSetting(
         name = "Render style",
         default = "Plane",
         options = listOf("Plane", "Block Tint"),
         desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
     )
+    private val style: RenderStyle get() = RenderStyle.entries[styleIndex]
     private val squareSize by NumberSetting("Square size", 0.5, 0.1, 1.0, 0.05, desc = "Side length of the plane squares")
-        .withDependency { style != BLOCK_TINT_INDEX }
+    *///?}
+        .withDependency { style != RenderStyle.BLOCK_TINT }
     private val renderRadius by NumberSetting(
         "Render radius",
         MAX_RENDER_RADIUS,
-        3,
+        //? if >=26.2 {
+        3..MAX_RENDER_RADIUS,
+        //?} else {
+        /*3,
         MAX_RENDER_RADIUS,
+        *///?}
         1,
         desc = "Only render columns this close to you, max renders the whole pattern",
         unit = " blocks"
@@ -152,7 +173,7 @@ object ManiaHelper : Module(
         on<LevelEvent.Load> { reset() }
         on<LevelEvent.Unload> { reset() }
 
-        on<RenderEvent.Extract> {
+        on<RenderExtractEvent> {
             val s = session ?: return@on
             if (!s.locked || s.cycleIndex < 0) return@on
             val player = mc.player ?: return@on
@@ -166,7 +187,7 @@ object ManiaHelper : Module(
             if (fromCentreX * fromCentreX + fromCentreZ * fromCentreZ > MAX_PLAYER_DISTANCE_SQ) return@on
 
             val size = squareSize
-            val blockTint = style == BLOCK_TINT_INDEX
+            val blockTint = style == RenderStyle.BLOCK_TINT
             surfaceCache.sync(s, blockTint)
             val radius = renderRadius
             val radiusSq = if (radius >= MAX_RENDER_RADIUS) Double.MAX_VALUE else (radius * radius).toDouble()

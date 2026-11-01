@@ -1,11 +1,17 @@
 package dev.cd.adrift.features.impl.rift
 
-import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
+//? if >=26.2 {
+import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
+//?} else
+//import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.ColorSetting
 import com.odtheking.odin.clickgui.settings.impl.NumberSetting
 import com.odtheking.odin.events.LevelEvent
-import com.odtheking.odin.events.RenderEvent
+//? if >=26.2 {
+import com.odtheking.odin.events.RenderExtractEvent
+//?} else
+//import dev.cd.adrift.utils.RenderExtractEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
@@ -72,8 +78,12 @@ object VampireHelper : Module(
     private val twinclawsDelay by NumberSetting(
         "Delay",
         default = 0,
-        min = 0,
+        //? if >=26.2 {
+        range = 0..1000,
+        //?} else {
+        /*min = 0,
         max = 1000,
+        *///?}
         increment = 10,
         desc = "Delay before the alert",
         unit = "ms"
@@ -114,7 +124,7 @@ object VampireHelper : Module(
         ClientEntityEvents.ENTITY_LOAD.register { entity, _ -> onEntityLoad(entity) }
         ClientEntityEvents.ENTITY_UNLOAD.register { entity, _ -> onEntityUnload(entity) }
 
-        on<RenderEvent.Extract> {
+        on<RenderExtractEvent> {
             if (!ichorLine || ichors.isEmpty()) return@on
 
             val boss = bossPriority() ?: return@on
