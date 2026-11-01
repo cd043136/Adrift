@@ -1,9 +1,12 @@
 package dev.cd.adrift.features.impl.rift.bossslots
 
+import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
 import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.clickgui.settings.impl.NumberSetting
+import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
 import com.odtheking.odin.events.LevelEvent
 import com.odtheking.odin.events.MessageEvent
+import com.odtheking.odin.events.RenderEvent
 import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.events.core.onReceive
@@ -15,57 +18,67 @@ import dev.cd.adrift.events.SlayerEvent
 import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.SlayerUtils
 import dev.cd.adrift.utils.VampireDrop
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.minecraft.core.Holder
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket
 import net.minecraft.network.protocol.game.ClientboundSoundPacket
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.phys.Vec3
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Opens a CSGO-style case opening reveal when your vampire boss dies. The strip lands on
- * the actual drops parsed from chat; when nothing rare drops they land on
- * Coven Seal (the guaranteed token).
+ * Reveals your vampire boss drops when it dies, either as a CSGO-style case
+ * opening ([BossDropsSpinner]) or as an in-world [BatSwarm] that never takes
+ * over the screen. Both land on the actual drops parsed from chat; when
+ * nothing rare drops they land on Coven Seal (the guaranteed token).
  *
  * Anti-spoil: while collecting (short window after death) and while spinning,
  * ALL incoming server chat is hidden via `MessageEvent.Chat` cancel (packet
  * itself is left alone so other mods still see it) and re-sent in order once
- * the reel stops (or the screen is closed early). This covers the rare drop line(s)
- * plus everything after them up to the last hidden message.
+ * the reel stops / the bats pop (or the screen is closed early). This covers the
+ * rare drop line(s) plus everything after them up to the last hidden message.
  */
 object BossSlots : Module(
     "Boss Slots",
     category = Category.RIFT,
-    description = "CSGO-style case opening reveal for vampire boss drops",
+    description = "Case opening or in-world bat swarm reveal for vampire boss drops",
 ) {
+    private val mode by SelectorSetting(
+        "Mode",
+        default = "Case Opening",
+        options = listOf("Case Opening", "Bat Swarm"),
+        desc = "Case Opening takes over the screen; Bat Swarm plays in the world so you can keep moving",
+    )
     private val hideDrops by BooleanSetting(
         "Hide Drop Messages",
         default = true,
-        desc = "Hide all chat during the spin and re-send it in order when the reel stops",
+        desc = "Hide all chat until the drops are revealed, then re-send it in order",
     )
     private val muteSounds by BooleanSetting(
         "Mute Sounds",
         default = true,
-        desc = "Cancel incoming sound packets during the spin (not re-played)",
+        desc = "Cancel incoming sound packets until the drops are revealed (not re-played)",
     )
     private val playSounds by BooleanSetting(
         "Play Sounds",
         default = true,
-        desc = "Play slot tick sounds and replay the Sangria Dye jingle when it is revealed",
+        desc = "Play reveal sounds and replay the Sangria Dye jingle when it is revealed",
     )
     private val winEffects by BooleanSetting(
         "Win Effects",
         default = true,
-        desc = "Casino-style BIG WIN for The One / Unfanged and JACKPOT for Sangria Dye",
+        desc = "Celebrate The One / Unfanged and Sangria Dye (casino banners in Case Opening, sounds only in Bat Swarm)",
     )
     private val hideItems by BooleanSetting(
         "Hide Dropped Items",
         default = true,
-        desc = "Hide item entities while a boss is alive or the case opening is on screen",
+        desc = "Hide item entities while a boss is alive or its drops are being revealed",
     )
     private val spinDuration by NumberSetting(
         "Spin Duration",
@@ -75,7 +88,10 @@ object BossSlots : Module(
         increment = 0.5,
         desc = "Total time the spin animation takes",
         unit = "s"
-    )
+    ).withDependency { mode == MODE_CASE }
+
+    private const val MODE_CASE = 0
+    private const val MODE_SWARM = 1
 
     private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
     private const val MAX_HIDDEN = 50
@@ -85,6 +101,7 @@ object BossSlots : Module(
     private var collectingSince = 0L
     private var spinning = false
     private var screen: BossDropsSpinner? = null
+    private var swarm: BatSwarm? = null
 
     /** Rift state cached on tick so the render-thread mixin never touches client state. */
     @Volatile
@@ -152,6 +169,13 @@ object BossSlots : Module(
     init {
         on<SlayerEvent.Spawn> {
             if (LocationUtils.currentArea != Island.Rift) return@on
+            val active = swarm
+            if (active != null && !active.isRevealed) {
+                // Next boss is up: scatter the bats and reveal now. The reveal
+                // drains the hidden chat and clears state, so keep it intact.
+                mc.execute { active.interrupt() }
+                return@on
+            }
             pendingDrops.clear()
             hidden.clear()
             suppressingChat = false
@@ -161,6 +185,16 @@ object BossSlots : Module(
         on<SlayerEvent.Death> {
             if (!enabled || LocationUtils.currentArea != Island.Rift) return@on
             if (spinning) return@on
+            if (mode == MODE_SWARM) {
+                // In the world, so an open screen doesn't block it.
+                if (!collecting) collectingSince = System.currentTimeMillis()
+                collecting = true
+                spinning = true
+                markChatSuppressing()
+                val pos = bossPos
+                mc.execute { startSwarm(pos, pendingDrops.toList(), scripted = null) }
+                return@on
+            }
             if (mc.screen != null) {
                 // Reveal blocked (chest/chat open): resend any pre-buffered
                 // RNG meter lines so they are never lost.
@@ -186,7 +220,8 @@ object BossSlots : Module(
         on<TickEvent.Server> {
             inRiftCached = LocationUtils.currentArea == Island.Rift
             hideItemsCached = inRiftCached &&
-                (SlayerUtils.boss != null || mc.screen is BossDropsSpinner || spinning || collecting)
+                (SlayerUtils.boss != null || mc.screen is BossDropsSpinner || spinning || collecting ||
+                    swarm?.hidesItems == true)
             if (collecting && !spinning && collectingSince != 0L &&
                 System.currentTimeMillis() - collectingSince > COLLECT_TIMEOUT_MS
             ) {
@@ -230,11 +265,7 @@ object BossSlots : Module(
             val dyeFound = VampireDrop.fromDyeMessage(message, mc.player?.gameProfile?.name)
             if (dyeFound.isNotEmpty()) {
                 pendingDrops.addAll(dyeFound)
-                val active = screen
-                if (active != null) {
-                    val drops = pendingDrops.toList()
-                    mc.execute { active.updateWinningDrops(drops) }
-                }
+                steerReveal()
                 if (hideDrops && !isCancelled && hidden.size < MAX_HIDDEN) {
                     cancel()
                     hidden.add(component)
@@ -262,13 +293,7 @@ object BossSlots : Module(
             val found = VampireDrop.fromChatMessage(message, component)
             if (found.isNotEmpty()) {
                 pendingDrops.addAll(found)
-                // Drops arrive during the animation; steer the reels that are
-                // still spinning toward the real result.
-                val active = screen
-                if (active != null) {
-                    val drops = pendingDrops.toList()
-                    mc.execute { active.updateWinningDrops(drops) }
-                }
+                steerReveal()
             }
             // Hide ALL server chat while active (rare drop + everything after
             // it), not just drop lines. Cancel only blocks vanilla display;
@@ -288,6 +313,7 @@ object BossSlots : Module(
             collectingSince = 0L
             spinning = false
             screen = null
+            swarm = null
             inRiftCached = false
             hideItemsCached = false
             pendingDrops.clear()
@@ -302,6 +328,43 @@ object BossSlots : Module(
         onReceive<ClientboundSoundEntityPacket> {
             if (shouldMuteSounds() || isSangriaJingleEcho(sound)) it.cancel()
         }
+
+        on<RenderEvent.Extract> {
+            val active = swarm ?: return@on
+            active.render(this)
+            if (active.finished && swarm === active) swarm = null
+        }
+
+        HudElementRegistry.addFirst(Identifier.fromNamespaceAndPath("adrift", "bat_swarm_sky")) { graphics, _ ->
+            swarm?.renderHud(graphics)
+        }
+    }
+
+    /** Drops arrive during the animation; steer the reels / swarm still running toward the real result. */
+    private fun steerReveal() {
+        val drops = pendingDrops.toList()
+        screen?.let { mc.execute { it.updateWinningDrops(drops) } }
+        swarm?.let { mc.execute { it.updateDrops(drops) } }
+    }
+
+    /** Client thread only. [scripted] stands in for drop chat when simulating. */
+    private fun startSwarm(pos: Vec3, preBuffered: List<VampireDrop>, scripted: List<VampireDrop>?) {
+        val created = BatSwarm(pos, playSounds, ::onSwarmReveal, scripted)
+        swarm = created
+        // The dye's WOW line can race ahead of death detection.
+        if (preBuffered.isNotEmpty()) created.updateDrops(preBuffered)
+    }
+
+    private fun onSwarmReveal(drops: List<VampireDrop>) {
+        val count = drainHidden()
+        spinning = false
+        collecting = false
+        collectingSince = 0L
+        pendingDrops.clear()
+        if (count > 0) println("[Adrift] BossSlots: bats popped, re-sent $count hidden message(s)")
+        if (!playSounds) return
+        if (VampireDrop.SANGRIA in drops) CelebrationSounds.playSangriaJingle()
+        if (winEffects) CelebrationSounds.play(WinTier.of(drops))
     }
 
     private fun openScreen() {
@@ -391,11 +454,19 @@ object BossSlots : Module(
 
     // ---- Simulate command (test hook) ----
 
-    /** Opens the case animation with the given drops, anywhere. */
+    /** Plays the selected reveal with the given drops, anywhere (the swarm spawns 6 blocks ahead). */
     fun simulate(drops: List<VampireDrop>) {
         mc.execute {
             if (spinning) {
-                modMessage("Case roll already in progress.")
+                modMessage("Reveal already in progress.")
+                return@execute
+            }
+            if (mode == MODE_SWARM) {
+                val player = mc.player ?: return@execute
+                val look = player.lookAngle.multiply(1.0, 0.0, 1.0).normalize()
+                spinning = true
+                markChatSuppressing()
+                startSwarm(player.position().add(look.scale(6.0)), emptyList(), scripted = drops)
                 return@execute
             }
             if (mc.screen != null) {
