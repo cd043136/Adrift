@@ -3,7 +3,7 @@
 mod.id = "adrift"
 mod.name = "Adrift"
 mod.description = "Rift addon for Odin"
-mod.version = "0.0.3"
+mod.version = "0.0.4"
 
 deps.devauth = "1.2.2"
 deps.commodore = "1.0.1"
