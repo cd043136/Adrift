@@ -10,6 +10,8 @@ import com.odtheking.odin.events.TickEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.Color
+import com.odtheking.odin.utils.Colors
+import com.odtheking.odin.utils.render.text
 import com.odtheking.odin.utils.handlers.schedule
 import com.odtheking.odin.utils.renderPos
 import com.odtheking.odin.utils.sendCommand
@@ -77,8 +79,28 @@ object VampireHelper : Module(
         unit = "ms"
     ).withDependency { twinclawsAlert }
 
+    private val bossHud by HUD("Boss HUD", desc = "Shows your boss's timer and nametag") { example ->
+        val lines = if (example) listOf(
+            Component.literal("§c02:41 §5§lMANIA §b14.8s §6§lTWINCLAWS §b1.6s"),
+            Component.literal("§4☠ §cBloodfiend V §a2,356§c❤")
+        )
+        else {
+            val boss = SlayerUtils.boss?.takeIf { it.isAlive } ?: return@HUD 0 to 0
+            listOfNotNull(bossStand(boss, 2)?.customName, bossStand(boss, 1)?.customName)
+        }
+        if (lines.isEmpty()) return@HUD 0 to 0
+
+        val sequences = lines.map { it.visualOrderText }
+        val width = sequences.maxOf { mc.font.width(it) }
+        sequences.forEachIndexed { i, line ->
+            text(line, (width - mc.font.width(line)) / 2, i * BOSS_HUD_LINE_HEIGHT, Colors.WHITE)
+        }
+        width to BOSS_HUD_LINE_HEIGHT * lines.size
+    }
+
     const val ICHOR_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTYxNTg4ODAwMDU1MywKICAicHJvZmlsZUlkIiA6ICI5ZDIyZGRhOTVmZGI0MjFmOGZhNjAzNTI1YThkZmE4ZCIsCiAgInByb2ZpbGVOYW1lIiA6ICJTYWZlRHJpZnQ0OCIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9jMDM0MDkyM2E2ZGU0ODI1YTE3NjgxM2QxMzM1MDNlZmYxODZkYjA4OTZlMzJiNjcwNDkyOGMyYTJiZjY4NDIyIgogICAgfQogIH0KfQ=="
     private const val TWINCLAWS_ALERT_MS = 1500L
+    private const val BOSS_HUD_LINE_HEIGHT = 10
     private val ichors: ConcurrentHashMap<Entity, CopyOnWriteArraySet<ArmorStand>> = ConcurrentHashMap()
 
     @Volatile private var wasTwinclaws = false
@@ -201,7 +223,7 @@ object VampireHelper : Module(
             resetTwinclawsState()
             return
         }
-        val timerName = mc.level?.getEntity(boss.id + 2)?.plainTextName
+        val timerName = bossStand(boss, 2)?.plainTextName
         if (timerName == null || !timerName.contains("TWINCLAWS")) {
             wasTwinclaws = false
             pendingAlertAt = 0L
@@ -224,6 +246,9 @@ object VampireHelper : Module(
             fireTwinclawsAlert()
         }
     }
+
+    // +1 = nametag, +2 = timer
+    private fun bossStand(boss: Entity, offset: Int): Entity? = mc.level?.getEntity(boss.id + offset)
 
     private fun fireTwinclawsAlert() {
         twinclawsAlertUntil = System.currentTimeMillis() + TWINCLAWS_ALERT_MS
