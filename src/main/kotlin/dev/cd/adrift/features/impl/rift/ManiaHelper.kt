@@ -115,7 +115,6 @@ object ManiaHelper : Module(
     private var worldScan: WorldScan? = null
     private val batch = ArrayList<ManiaUpdate>()
     private val surfaceCache = SurfaceCache()
-    private var surfaceY = Int.MIN_VALUE
     private val colours = Array(ManiaBlock.entries.size) { Colors.WHITE }
     private var debugWriter: BufferedWriter? = null
     private var debugWriterFailed = false
@@ -167,13 +166,11 @@ object ManiaHelper : Module(
 
             val size = squareSize
             val blockTint = style == RenderStyle.BLOCK_TINT
-            if (player.onGround() || surfaceY == Int.MIN_VALUE) surfaceY = player.blockY
-            surfaceCache.sync(s, surfaceY, blockTint)
+            surfaceCache.sync(s, blockTint)
             val radius = renderRadius
             val radiusSq = if (radius >= MAX_RENDER_RADIUS) Double.MAX_VALUE else (radius * radius).toDouble()
             val greenOnly = safeOnly
             val skipMatching = onlyDifferent
-            val feetY = player.y
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
 
             for (i in 0 until ManiaGeometry.offsetCount) {
@@ -184,11 +181,13 @@ object ManiaHelper : Module(
                 val dx = x + 0.5 - px
                 val dz = z + 0.5 - pz
                 if (dx * dx + dz * dz > radiusSq) continue
-                surfaceCache.ensure(i, level, x, z, feetY)
-                if (skipMatching && surfaceCache.types[i] == expected) continue
+                surfaceCache.ensure(i, level, x, z)
                 val colour = colours[expected.ordinal]
-                if (blockTint) for (box in surfaceCache.tints[i]) drawFilledBox(box, colour, true)
-                else drawFlatSquare(x + 0.5, z + 0.5, surfaceCache.tops[i] + PLANE_Y_OFFSET, size, colour, true)
+                for (surface in surfaceCache.surfaces[i]) {
+                    if (skipMatching && surface.type == expected) continue
+                    if (blockTint) for (box in surface.tints) drawFilledBox(box, colour, true)
+                    else drawFlatSquare(x + 0.5, z + 0.5, surface.top + PLANE_Y_OFFSET, size, colour, true)
+                }
             }
         }
     }
@@ -291,7 +290,6 @@ object ManiaHelper : Module(
         session = null
         sessionLevel = null
         surfaceCache.clear()
-        surfaceY = Int.MIN_VALUE
         s.finish(reason)
         closeDebugLog()
     }
@@ -379,23 +377,23 @@ object ManiaHelper : Module(
         }
     }
 
-    /** Per-column surface at the player's height, keyed by offset index of the current centre. */
+    private class Surface(val top: Double, val type: ManiaBlock, val tints: List<AABB>)
+
+    /** Standable surfaces per column within the mania's vertical reach, keyed by offset index of the current centre. */
     private class SurfaceCache {
         private val valid = BooleanArray(ManiaGeometry.offsetCount)
-        val types = Array(ManiaGeometry.offsetCount) { ManiaBlock.NONE }
-        val tops = DoubleArray(ManiaGeometry.offsetCount)
-        val tints = Array(ManiaGeometry.offsetCount) { emptyList<AABB>() }
+        val surfaces = Array(ManiaGeometry.offsetCount) { emptyList<Surface>() }
         private val pos = BlockPos.MutableBlockPos()
         private var owner: ManiaSession? = null
         private var version = -1
-        private var playerBlockY = Int.MIN_VALUE
+        private var baseY = 0
         private var withTints = false
 
-        fun sync(s: ManiaSession, blockY: Int, tints: Boolean) {
-            if (s === owner && s.centreVersion == version && blockY == playerBlockY && tints == withTints) return
+        fun sync(s: ManiaSession, tints: Boolean) {
+            if (s === owner && s.centreVersion == version && tints == withTints) return
             owner = s
             version = s.centreVersion
-            playerBlockY = blockY
+            baseY = Mth.floor(s.bossY)
             withTints = tints
             valid.fill(false)
         }
@@ -406,8 +404,8 @@ object ManiaHelper : Module(
             if (i >= 0) valid[i] = false
         }
 
-        fun ensure(i: Int, level: Level, x: Int, z: Int, feetY: Double) {
-            if (!valid[i]) compute(i, level, x, z, feetY)
+        fun ensure(i: Int, level: Level, x: Int, z: Int) {
+            if (!valid[i]) compute(i, level, x, z)
         }
 
         fun clear() {
@@ -415,29 +413,34 @@ object ManiaHelper : Module(
             valid.fill(false)
         }
 
-        private fun compute(i: Int, level: Level, x: Int, z: Int, feetY: Double) {
-            var top = feetY
-            var type = ManiaBlock.NONE
-            var tint = emptyList<AABB>()
-            for (y in playerBlockY + SCAN_UP downTo playerBlockY - SCAN_DOWN) {
+        private fun compute(i: Int, level: Level, x: Int, z: Int) {
+            var found: ArrayList<Surface>? = null
+            // Passable blocks directly above the current y; the scan starts HEADROOM above the reach so the top is checked too.
+            var clearance = 0
+            for (y in baseY + REACH_UP + HEADROOM downTo baseY - REACH_DOWN) {
                 pos.set(x, y, z)
                 val state = level.getBlockState(pos)
                 val shape = state.getCollisionShape(level, pos)
-                if (shape.isEmpty) continue
-                top = y + shape.max(Direction.Axis.Y)
-                type = ManiaBlock.of(state)
-                if (withTints) tint = tintBoxes(shape, x, y, z)
-                break
+                if (shape.isEmpty) {
+                    clearance++
+                    continue
+                }
+                if (clearance >= HEADROOM && y <= baseY + REACH_UP) {
+                    val tint = if (withTints) tintBoxes(shape, x, y, z) else emptyList()
+                    (found ?: ArrayList<Surface>(2).also { found = it }) +=
+                        Surface(y + shape.max(Direction.Axis.Y), ManiaBlock.of(state), tint)
+                }
+                clearance = 0
             }
-            tops[i] = top
-            types[i] = type
-            tints[i] = tint
+            surfaces[i] = found ?: emptyList()
             valid[i] = true
         }
 
         private companion object {
-            const val SCAN_UP = 2
-            const val SCAN_DOWN = 4
+            /** Our own pattern's blocks land within this many blocks of the boss's feet (from logged manias). */
+            const val REACH_UP = 6
+            const val REACH_DOWN = 10
+            const val HEADROOM = 2
         }
     }
 
