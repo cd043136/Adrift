@@ -1,6 +1,6 @@
 # Adrift
 
-Odin addon focused mainly on Rift & vampire slayer features
+Odin addon focused mainly on Rift & vampire slayer features. Modrinth link: https://modrinth.com/mod/adrift-sb
 
 > Requires [Odin](https://modrinth.com/mod/odin)
 
