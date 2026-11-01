@@ -79,21 +79,23 @@ object VampireHelper : Module(
         unit = "ms"
     ).withDependency { twinclawsAlert }
 
+    private val bossHudExample = listOf(
+        Component.literal("§c02:41 §5§lMANIA §b14.8s §6§lTWINCLAWS §b1.6s"),
+        Component.literal("§4☠ §cBloodfiend V §a2,356§c❤")
+    )
+
     private val bossHud by HUD("Boss HUD", desc = "Shows your boss's timer and nametag") { example ->
-        val lines = if (example) listOf(
-            Component.literal("§c02:41 §5§lMANIA §b14.8s §6§lTWINCLAWS §b1.6s"),
-            Component.literal("§4☠ §cBloodfiend V §a2,356§c❤")
-        )
+        val lines = if (example) bossHudExample
         else {
             val boss = SlayerUtils.boss?.takeIf { it.isAlive } ?: return@HUD 0 to 0
             listOfNotNull(bossStand(boss, 2)?.customName, bossStand(boss, 1)?.customName)
         }
         if (lines.isEmpty()) return@HUD 0 to 0
 
-        val sequences = lines.map { it.visualOrderText }
-        val width = sequences.maxOf { mc.font.width(it) }
-        sequences.forEachIndexed { i, line ->
-            text(line, (width - mc.font.width(line)) / 2, i * BOSS_HUD_LINE_HEIGHT, Colors.WHITE)
+        // fixed width so the centre doesn't shift as the timer text changes length
+        val width = bossHudExample.maxOf { mc.font.width(it) }
+        lines.forEachIndexed { i, line ->
+            text(line.visualOrderText, (width - mc.font.width(line)) / 2, i * BOSS_HUD_LINE_HEIGHT, Colors.WHITE)
         }
         width to BOSS_HUD_LINE_HEIGHT * lines.size
     }
