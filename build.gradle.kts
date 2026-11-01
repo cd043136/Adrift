@@ -80,6 +80,10 @@ base {
     archivesName.set(project.property("archives_base_name") as String)
 }
 
+tasks.withType<AbstractArchiveTask>().configureEach {
+    archiveVersion.set("${project.version}-${project.property("minecraft_version")}")
+}
+
 val targetJavaVersion = 25
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
