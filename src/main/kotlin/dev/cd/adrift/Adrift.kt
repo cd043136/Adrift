@@ -54,16 +54,13 @@ object Adrift : ClientModInitializer {
         Location.register()
         SlayerUtils.register()
 
-        // Tabs in order, then every module (each adds its own section), then the settings that aren't a feature
+        // Tabs in order, then every module (each adds its own section)
         Category.entries
         listOf(
             BossHighlight, IchorLine, Twinclaws, ManiaHelper, LowHealthWarning, BossHud,
             PartyAnnounce, BeaconSoul,
             Splits, SlayerDrops,
         )
-        Config.category("General").section("Interface").button(
-            "general.editHud", "HUD Layout", "Drag HUD elements around, and scroll over one to resize it.", "Edit"
-        ) { HudEditorScreen(returnToConfig = true).open() }
         Config.load()
 
         ClientTickEvents.END_CLIENT_TICK.register { _ ->

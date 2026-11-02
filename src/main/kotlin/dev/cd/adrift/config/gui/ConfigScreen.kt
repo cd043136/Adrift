@@ -5,6 +5,7 @@ import com.mojang.blaze3d.platform.cursor.CursorTypes
 import dev.cd.adrift.Adrift
 import dev.cd.adrift.config.Config
 import dev.cd.adrift.config.gui.Palette.fade
+import dev.cd.adrift.hud.HudEditorScreen
 import dev.cd.adrift.utils.Color
 import foo.starred.cascade.animation.extension.impl.animate
 import foo.starred.cascade.animation.interpolator.easing.impl.EaseOutEasingInterpolator
@@ -16,6 +17,8 @@ import foo.starred.cascade.constraints.impl.position.FixedPositionConstraint
 import foo.starred.cascade.constraints.impl.size.FillSizeConstraint
 import foo.starred.cascade.constraints.impl.size.FixedSizeConstraint
 import foo.starred.cascade.effects.impl.OutlineEffect
+import foo.starred.cascade.events.impl.FocusEvent
+import foo.starred.cascade.events.impl.KeyEvent
 import foo.starred.cascade.events.impl.MouseEvent
 import foo.starred.cascade.graphics.geometry.CascadeGeometricColor
 import foo.starred.cascade.graphics.geometry.CascadeGeometricOffset
@@ -81,6 +84,8 @@ class ConfigScreen : CascadeScreen("Adrift") {
         const val BUTTON_H = 35f
         const val THEME_BUTTON = 38f
         const val ICON = 22f
+        const val SEARCH_W = 230f
+        const val MAX_QUERY = 28
         /**
          * Where the bucket's water is in its 24 px viewBox. It's a separate SVG cropped to these bounds, so a vertical
          * tint over it is the mockup's gradient.
@@ -147,6 +152,13 @@ class ConfigScreen : CascadeScreen("Adrift") {
     private val scrollThumb: RoundedRectanglePrimitive
     private val bucket = image { interact = false }
     private val bucketWater = image { interact = false }
+    private val searchIcon = image { interact = false }
+    private lateinit var searchField: RoundedRectanglePrimitive
+    private lateinit var noMatches: TextPrimitive
+    /** While not blank, the list shows the matching options of every tab instead of the current one. */
+    private var query = ""
+    private val searching get() = query.isNotBlank()
+    private var searchFocused = false
     /** The open colour popup, if any. */
     private var picker: ColorPicker? = null
     private var pickerLayers = emptyList<IPrimitiveElement<*>>()
@@ -175,6 +187,11 @@ class ConfigScreen : CascadeScreen("Adrift") {
             position = FixedPositionConstraint(versionX, textTop(67f, 12.5f))
         })
         panel.adopt(themeButton())
+        val hud = hudButton()
+        panel.adopt(hud)
+        val searchX = (hud.position as FixedPositionConstraint).x - GAP - THEME_BUTTON
+        panel.adopt(searchButton(searchX))
+        panel.adopt(searchField(searchX - 8f - SEARCH_W))
 
         panel.adopt(rule(RULE_Y))
         var tabX = PAD
@@ -199,6 +216,11 @@ class ConfigScreen : CascadeScreen("Adrift") {
         list.on<MouseEvent.Move.Enter> { paintScrollbar() }
         list.on<MouseEvent.Move.Exit> { paintScrollbar() }
         panel.adopt(list)
+        noMatches = label("NO MATCHING OPTIONS", Montserrat.BOLD.tracked(0.14f), 13f, Palette.MUTED).apply {
+            position = FixedPositionConstraint(PAD, LIST_Y + 24f)
+            visible = false
+        }
+        panel.adopt(noMatches)
 
         highlight = roundedRectangle {
             size = FixedSizeConstraint(ROW_W, ROW_H - 1f)
@@ -251,6 +273,7 @@ class ConfigScreen : CascadeScreen("Adrift") {
         bucketWater.location = CascadeSVG.load(
             Adrift.id("textures/gui/config/bucket_water.svg"), icon, ceil(ICON * WATER_H / 24f * scale).toInt(),
         )
+        searchIcon.location = CascadeSVG.load(Adrift.id("textures/gui/config/search.svg"), icon, icon)
         picker?.rasterize(scale)
         swatchCheckers.forEach { it.location = checker(SWATCH_W, SWATCH_H, 5f, scale) }
         initialized = true
@@ -294,6 +317,120 @@ class ConfigScreen : CascadeScreen("Adrift") {
             // Under the bucket, right-aligned with it
             openPicker(picker, PANEL_W - PAD - ColorPicker.WIDTH, 24f + THEME_BUTTON + 6f)
         }
+    }
+
+    /** Left of the bucket; opens the HUD editor, which comes back here when closed. */
+    private fun hudButton() = roundedRectangle {
+        val button = this
+        val font = Montserrat.BOLD.tracked(0.14f)
+        val text = "EDIT HUD"
+        val w = font.width(text, 12f) + 32f + 2f
+        position = FixedPositionConstraint(PANEL_W - PAD - THEME_BUTTON - GAP - w, 24f)
+        size = FixedSizeConstraint(w, THEME_BUTTON)
+        radius = CascadeGeometricRadius(THEME_BUTTON / 2f)
+        cursor = CursorTypes.POINTING_HAND
+        val outline = effect(OutlineEffect { })
+        val caption = label(text, font, 12f, Palette.TEXT).apply { position = CenterPositionConstraint() }
+        adopt(caption)
+
+        val hover = Fade { t ->
+            button.color = color(Palette.lerp(0x0FFFFFFF, 0x24FFFFFF, t))
+            outline.color = color(Palette.lerp(0x38FFFFFF, Palette.WHITE, t))
+            caption.color = color(Palette.TEXT)
+        }
+        painters += hover::repaint
+        on<MouseEvent.Move.Enter> { hover.to(1f, FAST) }
+        on<MouseEvent.Move.Exit> { hover.to(0f, FAST) }
+        onLeftClick { _, _ ->
+            closePicker()
+            HudEditorScreen(returnToConfig = true).open()
+        }
+    }
+
+    /** Left of Edit HUD; shows the search field, or hides it and clears the search. */
+    private fun searchButton(x: Float) = roundedRectangle {
+        val button = this
+        position = FixedPositionConstraint(x, 24f)
+        size = FixedSizeConstraint(THEME_BUTTON, THEME_BUTTON)
+        radius = CascadeGeometricRadius(THEME_BUTTON / 2f)
+        cursor = CursorTypes.POINTING_HAND
+        val outline = effect(OutlineEffect { })
+        val inset = (THEME_BUTTON - ICON) / 2f
+        searchIcon.position = FixedPositionConstraint(inset, inset)
+        searchIcon.size = FixedSizeConstraint(ICON, ICON)
+        adopt(searchIcon)
+
+        val hover = Fade { t ->
+            val open = searchField.visible
+            button.color = color(Palette.lerp(0x0FFFFFFF, 0x24FFFFFF, t))
+            outline.color = color(if (open) Palette.accent else Palette.lerp(0x38FFFFFF, Palette.WHITE, t))
+            searchIcon.color = color(Palette.TEXT)
+        }
+        painters += hover::repaint
+        on<MouseEvent.Move.Enter> { hover.to(1f, FAST) }
+        on<MouseEvent.Move.Exit> { hover.to(0f, FAST) }
+        onLeftClick { _, _ -> if (searchField.visible) closeSearch() else openSearch() }
+    }
+
+    /** Typing filters the list; Escape clears it, then closes it. */
+    private fun searchField(x: Float) = roundedRectangle {
+        position = FixedPositionConstraint(x, 24f)
+        size = FixedSizeConstraint(SEARCH_W, THEME_BUTTON)
+        radius = CascadeGeometricRadius(THEME_BUTTON / 2f)
+        cursor = CursorTypes.IBEAM
+        visible = false
+        val outline = effect(OutlineEffect { })
+        val text = label("", Montserrat.SEMIBOLD, 12.5f, 0).apply {
+            position = AlignPositionConstraint(PositionAlignment.START, PositionAlignment.CENTER)
+            offset = CascadeGeometricOffset(16f, 0f)
+        }
+        adopt(text)
+        searchField = this
+        val field = this
+        painters += {
+            field.color = color(if (searchFocused) 0x80000000.toInt() else 0x59000000)
+            outline.color = color(if (searchFocused) Palette.accent else 0x38FFFFFF)
+            text.setText(if (query.isEmpty()) "Search options" else if (searchFocused) "$query|" else query)
+            text.color = color(if (query.isEmpty()) Palette.MUTED else Palette.TEXT)
+        }
+
+        // Pressing focuses it; keys then go to the focused element
+        on<MouseEvent.Press> { cancel() }
+        on<FocusEvent.Gain> { searchFocused = true; repaint() }
+        on<FocusEvent.Lose> { searchFocused = false; repaint() }
+        on<KeyEvent.Type> {
+            if (char < ' ' || query.length >= MAX_QUERY) return@on
+            search(query + char)
+            cancel()
+        }
+        on<KeyEvent.Press> {
+            when (key) {
+                InputConstants.KEY_BACKSPACE -> if (query.isNotEmpty()) search(query.dropLast(1))
+                // Swallowed, so the first Escape doesn't close the menu
+                InputConstants.KEY_ESCAPE -> if (query.isNotEmpty()) search("") else closeSearch()
+                else -> return@on
+            }
+            cancel()
+        }
+    }
+
+    private fun openSearch() {
+        searchField.visible = true
+        scene.focused = searchField
+        repaint()
+    }
+
+    private fun closeSearch() {
+        if (scene.focused === searchField) scene.focused = null
+        searchField.visible = false
+        search("")
+    }
+
+    private fun search(text: String) {
+        val was = query
+        query = text
+        if (was.isNotBlank() || searching) rebuild()
+        repaint()
     }
 
     /** Shows [picker] with its top-left at ([x], [y]) of the panel; clicking anywhere else closes it. */
@@ -343,7 +480,8 @@ class ConfigScreen : CascadeScreen("Adrift") {
         adopt(underline)
 
         val hover = Fade { t ->
-            val selected = target === category
+            // Search results span every tab
+            val selected = target === category && !searching
             name.color = color(if (selected) Palette.WHITE else Palette.lerp(Palette.MUTED, Palette.TEXT, t))
             underline.visible = selected
             underline.color = color(Palette.accent)
@@ -352,9 +490,13 @@ class ConfigScreen : CascadeScreen("Adrift") {
         on<MouseEvent.Move.Enter> { hover.to(1f, FAST) }
         on<MouseEvent.Move.Exit> { hover.to(0f, FAST) }
         onLeftClick { _, _ ->
-            if (target === category) return@onLeftClick
+            if (target === category && !searchField.visible) return@onLeftClick
             category = target
             lastCategory = Config.categories.indexOf(target)
+            // Picking a tab ends the search
+            if (scene.focused === searchField) scene.focused = null
+            searchField.visible = false
+            query = ""
             rebuild()
             repaint()
         }
@@ -385,10 +527,10 @@ class ConfigScreen : CascadeScreen("Adrift") {
         scrollY = 0f
         scrollTarget = 0f
 
-        for (section in category.sections) {
-            val header = SectionHeader(section)
+        for ((title, options) in listedSections()) {
+            val header = SectionHeader(title)
             items += header
-            for (option in section.options) {
+            for (option in options) {
                 items += when (option) {
                     is Config.BoolOption -> ToggleRow(option)
                     is Config.IntOption -> SliderRow(option, intSlider(option))
@@ -402,7 +544,29 @@ class ConfigScreen : CascadeScreen("Adrift") {
         items.forEach { list.adopt(it.box) }
         // No animation when switching tabs
         for (item in items) item.reveal = if (item.wanted) 1f else 0f
+        noMatches.visible = searching && items.none { it.wanted }
         relayout()
+    }
+
+    /**
+     * The current tab's sections, or while searching, every section's options whose full name (section, then
+     * option, like "Low Health Warning Vignette") has all the words of the query. Options a match depends on
+     * come along, so it can be switched on.
+     */
+    private fun listedSections(): List<Pair<String, List<Config.Option>>> {
+        if (!searching) return category.sections.map { it.name to it.options }
+        val words = query.lowercase().split(' ').filter { it.isNotEmpty() }
+        return Config.categories.flatMap { tab ->
+            tab.sections.mapNotNull { section ->
+                val matches = section.options.filter { option ->
+                    val text = "${section.name} ${option.label}".lowercase()
+                    words.all(text::contains)
+                }
+                if (matches.isEmpty()) return@mapNotNull null
+                val listed = matches.flatMap { generateSequence(it) { option -> option.dependsOn }.toList() }.toSet()
+                "${tab.name} · ${section.name}" to section.options.filter { it in listed }
+            }
+        }
     }
 
     /** Folds rows in and out after a value that others depend on changed. */
@@ -592,9 +756,9 @@ class ConfigScreen : CascadeScreen("Adrift") {
         abstract fun paint()
     }
 
-    private inner class SectionHeader(section: Config.Section) : Item(SECTION_H) {
+    private inner class SectionHeader(title: String) : Item(SECTION_H) {
         val rows = mutableListOf<Row<*>>()
-        private val name = label(section.name.uppercase(), Montserrat.BOLD.tracked(0.2f), 11f, 0).apply {
+        private val name = label(title.uppercase(),Montserrat.BOLD.tracked(0.2f), 11f, 0).apply {
             // 16 px of padding above the line; anchored to the bottom so it stays put while the header folds
             position = AlignPositionConstraint(PositionAlignment.START, PositionAlignment.END)
             offset = CascadeGeometricOffset(ROW_PAD, -(SECTION_H - textTop(16f, 11f) - Montserrat.BOLD.height(11f)))
