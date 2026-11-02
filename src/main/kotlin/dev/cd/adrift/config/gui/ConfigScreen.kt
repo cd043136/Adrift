@@ -309,7 +309,7 @@ class ConfigScreen : CascadeScreen("Adrift") {
         }
         // Placed from the panel's centre since the panel is centred
         picker.root.position = CenterPositionConstraint()
-        picker.root.offset = CascadeGeometricOffset(x + ColorPicker.WIDTH / 2f - PANEL_W / 2f, y + picker.height / 2f - PANEL_H / 2f)
+        picker.root.offset = CascadeGeometricOffset(x + ColorPicker.WIDTH / 2f - PANEL_W / 2f, y + picker.popupHeight / 2f - PANEL_H / 2f)
         pickerLayers = listOf(catcher, picker.root)
         pickerLayers.forEach(scene::adopt)
     }
@@ -845,12 +845,13 @@ class ConfigScreen : CascadeScreen("Adrift") {
         private var hovered: Segment? = null
 
         init {
-            var x = 0f
+            // Not called x: the mouse handlers below would capture it instead of the event's x
+            var left = 0f
             segments = option.entries.map { entry ->
                 val w = font.width(option.name(entry).uppercase(), 11f) + SEGMENT_PAD * 2
-                Segment(entry, x, w).also { x += w + 2f }
+                Segment(entry, left, w).also { left += w + 2f }
             }
-            val total = x - 2f
+            val total = left - 2f
             bar = roundedRectangle {
                 size = FixedSizeConstraint(total, SEGMENT_H)
                 radius = CascadeGeometricRadius(6f)
@@ -938,7 +939,7 @@ class ConfigScreen : CascadeScreen("Adrift") {
             // Under the row, right-aligned with the swatch; above it if it would run off the bottom
             val rowTop = LIST_Y + top - scrollY
             val below = rowTop + ROW_H + 4f
-            val y = if (below + picker.height > PANEL_H + 10f) rowTop - picker.height - 4f else below
+            val y = if (below + picker.popupHeight > PANEL_H + 10f) rowTop - picker.popupHeight - 4f else below
             openPicker(picker, ROW_X + ROW_W - ROW_PAD - ColorPicker.WIDTH, y)
         }
 

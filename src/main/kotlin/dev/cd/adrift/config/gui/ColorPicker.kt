@@ -65,8 +65,9 @@ class ColorPicker(
     }
 
     private val hasAlpha = alpha != null
-    val height = height(hasAlpha)
-    private val rowY = height - PAD - FIELD_H
+    /** Not called height: inside the element builders that would be the element's own height. */
+    val popupHeight = height(hasAlpha)
+    private val rowY = popupHeight - PAD - FIELD_H
 
     private var hue: Float
     private var saturation: Float
@@ -133,7 +134,7 @@ class ColorPicker(
     }
 
     val root: RoundedRectanglePrimitive = roundedRectangle {
-        size = FixedSizeConstraint(WIDTH, height)
+        size = FixedSizeConstraint(WIDTH, popupHeight)
         radius = CascadeGeometricRadius(10f)
         color = color(Palette.POPUP)
         effect(DropShadowEffect { offset = CascadeGeometricOffset(0f, 14f); blur = 40f; color = color(0x99000000.toInt()) })
