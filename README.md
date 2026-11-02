@@ -1,28 +1,24 @@
 # Adrift
 
-Odin addon focused mainly on Rift & vampire slayer features. Modrinth link: https://modrinth.com/mod/adrift-sb
+Rift & vampire slayer features for Hypixel Skyblock. Modrinth link: https://modrinth.com/mod/adrift-sb
 
-> Requires [Odin](https://modrinth.com/mod/odin)
+Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin. Open the settings with `/adrift`
+(or bind **Open Config** in Controls), and move HUD elements with `/adrift hud`. Settings from the Odin addon
+version of Adrift are imported the first time it runs (HUD positions need placing again).
 
-| Minecraft | Odin   |
-|-----------|--------|
-| 26.1      | 0.3.4+ |
-| 26.2      | 0.3.6+ |
-| 26.3      | 0.4.0+ |
+| Minecraft | Fabric API | Fabric Language Kotlin |
+|-----------|------------|------------------------|
+| 26.1      | 0.151.0+   | 1.13.12+               |
+| 26.2      | 0.161.0+   | 1.14.2+                |
+| 26.3      | 0.165.0+   | 1.14.2+                |
 
 ## Features
 
-<details>
-<summary>Announce Mania</summary>
-
-### Announce Mania
-Announce when you reach specific mania phase(s), useful for lootsharing
-</details>
+### Boss
 
 <details>
 <summary>Boss Highlight</summary>
 
-### Boss Highlight
 - Dynamic highlight, including a custom boss render
 - Support for people's boss
 
@@ -31,52 +27,74 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 </details>
 
 <details>
-<summary>Health Warning</summary>
+<summary>Ichor Line</summary>
 
-### Health Warning
-- Alerts you when your health is critically low
-</details>
-
-<details>
-<summary>Mania Helper</summary>
-
-### Mania Helper
-- Renders your mania pattern fully, fixes a bug where some blocks do not change colours during mania
-- Also prevents you from dying in mania if someone's griefing your boss
-
-![](https://cdn.modrinth.com/data/KMvVDXMP/images/dd7ad4147b1bc62698ae68d843fa93b7d0584710.png)
-</details>
-
-<details>
-<summary>Slayer Drops</summary>
-
-### Slayer Drops
-- Rename bundle drops to "The One IV Bundle"
-- Copy rare drops
-</details>
-
-<details>
-<summary>Vampire Helper</summary>
-
-### Vampire Helper
-
-- **Announce spawn**
-  - Sends in party chat when your boss spawns, useful for lootsharing
-- **Ichor line**
-  - Draws an indicator from boss to ichor so you don't miss it
-  - Support for other people's boss
+- Draws an indicator from boss to ichor so you don't miss it
+- Support for other people's boss
 
 ![](https://cdn.modrinth.com/data/KMvVDXMP/images/e37d2bd5825b46dd285f70a093f66b66fd892ccc.png)
 </details>
 
 <details>
-<summary>Splits</summary>
+<summary>Twinclaws</summary>
 
-### Splits
+- Louder Twinclaws countdown sound
+- On-screen alert when Twinclaws starts, with an optional delay
+</details>
+
+<details>
+<summary>Mania Helper</summary>
+
+- Renders your mania pattern fully, fixes a bug where some blocks do not change colours during mania
+- Also prevents you from dying in mania if someone's griefing your boss
+- Status HUD: safe / move in / move out and time until coal
+
+![](https://cdn.modrinth.com/data/KMvVDXMP/images/dd7ad4147b1bc62698ae68d843fa93b7d0584710.png)
+</details>
+
+<details>
+<summary>Low Health Warning</summary>
+
+- Alerts you when your health is critically low
+</details>
+
+<details>
+<summary>Boss HUD</summary>
+
+- Shows your boss's timer and nametag on screen
+</details>
+
+### Party
+
+<details>
+<summary>Party Announce</summary>
+
+Sends to party chat, useful for lootsharing:
+- Your boss's coordinates when it spawns
+- Each mania phase you pick
+- How long the boss took to kill
+</details>
+
+<details>
+<summary>Beacon Soul Helper</summary>
+
+- Sends the 2 player beacon soul grid to party chat
+</details>
+
+### Tracking
+
+<details>
+<summary>Splits</summary>
 
 - Boss phase timer (damage, mania)
 - Track & reset PB
-- Option to send boss times in party chat
+</details>
+
+<details>
+<summary>Slayer Drops</summary>
+
+- Rename bundle drops to "The One IV Bundle"
+- Copy rare drops
 </details>
 
 ## TODO
@@ -91,10 +109,19 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 
 Every supported Minecraft version is built from the same `src/` with [Stonecutter](https://stonecutter.kikugie.dev/).
 Version-specific code is wrapped in comments such as `//? if >=26.2 {`, and per-version dependencies
-(Fabric API, Odin, ...) live in `stonecutter.properties.toml`.
+(Fabric API, Fabric Language Kotlin, ...) live in `stonecutter.properties.toml`.
 
 - `./gradlew buildAll` builds every version into `build/libs/`; `./gradlew :26.2:build` builds one.
 - `./gradlew "Set active project to 26.1"` switches `src/` (and the IDE classpath) to another version.
 - Run `./gradlew "Reset active project"` before committing, so `src/` is committed in its 26.3 state.
 - Mixins that only exist on some versions are registered in `AdriftMixinPlugin` rather than `adrift.mixins.json`.
-- Odin API shims for older Odin versions go in `utils/OdinCompat.kt`.
+- `/adrift forcerift` makes any world count as the Rift, for trying features in singleplayer.
+
+Layout:
+- `features/` holds the modules, one config section each, grouped into the Boss, Party and Tracking tabs.
+  A `Module` declares its options (`bool`, `int`, `double`, `choice`, `color`, `button`, `hud`) and listens with
+  `on<Event>`, which only runs while it's enabled.
+- `events/` is the event bus. `ConnectionMixin` posts packets and a server tick per ping (on the netty thread);
+  `SlayerUtils` turns the fight into `SlayerEvent`s (spawn, mania start/end, complete).
+- `config/` saves options to `config/adrift.json`; `config/gui/` is the Cascade config screen (from personalmod).
+- `hud/` is the HUD element system and editor; `utils/render/` batches world geometry per frame.
