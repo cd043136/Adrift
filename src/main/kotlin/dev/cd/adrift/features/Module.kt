@@ -62,15 +62,15 @@ abstract class Module(val name: String, category: Category, val description: Str
         section.button(key(label), label, desc, text, enabledOption, onClick)
 
     /**
-     * A movable HUD element with a switch to show it. [content] draws into the canvas and returns its size, (0, 0)
-     * to hide; with `preview` it draws example content for the HUD editor.
+     * A movable HUD element with a switch to show it, called [title] in the HUD editor. [content] draws into the
+     * canvas and returns its size, (0, 0) to hide; with `preview` it draws example content for the HUD editor.
      */
     protected fun hud(
-        label: String, desc: String, x: Float, y: Float, default: Boolean = true,
+        label: String, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name,
         content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
     ): Config.BoolOption {
         val shown = bool(label, default, desc)
-        HudManager.add(TextHud(label, Config.hudLayout(key(label), x, y), { enabled && shown() }, content))
+        HudManager.add(TextHud(title, Config.hudLayout(key(label), x, y), { enabled && shown() }, content))
         return shown
     }
 

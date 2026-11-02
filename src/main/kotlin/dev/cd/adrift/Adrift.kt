@@ -3,6 +3,7 @@ package dev.cd.adrift
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.brigadier.Command
 import dev.cd.adrift.config.Config
+import dev.cd.adrift.config.OdinMigration
 import dev.cd.adrift.config.gui.ConfigScreen
 import dev.cd.adrift.events.EventDispatcher
 import dev.cd.adrift.features.Category
@@ -29,6 +30,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.KeyMapping
+import net.minecraft.client.renderer.rendertype.AdriftRenderTypes
 import net.minecraft.resources.Identifier
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -63,13 +65,15 @@ object Adrift : ClientModInitializer {
         Config.category("General").section("Interface").button(
             "general.editHud", "HUD Layout", "Drag HUD elements around, and scroll over one to resize it.", "Edit"
         ) { HudEditorScreen(returnToConfig = true).open() }
-        Config.load()
+        OdinMigration.migrateIfNeeded(hadConfig = Config.load())
 
         ClientTickEvents.END_CLIENT_TICK.register { _ ->
             while (openConfigKey.consumeClick()) ConfigScreen().open()
             Config.tick()
         }
         ClientLifecycleEvents.CLIENT_STOPPING.register { _ -> Config.tick(force = true) }
+        // Builds the world render pipelines up front, so a problem with them shows at launch rather than mid-fight
+        ClientLifecycleEvents.CLIENT_STARTED.register { _ -> AdriftRenderTypes.FILL }
 
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
             dispatcher.register(

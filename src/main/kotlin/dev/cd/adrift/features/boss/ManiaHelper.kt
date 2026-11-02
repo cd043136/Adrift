@@ -64,7 +64,7 @@ object ManiaHelper : Module(
     private val debug by bool("Debug", false, "Logs batches and centre fitting to chat and config/adrift/mania_debug.log.")
 
     init {
-        hud("Status HUD", "Shows safe / move in / move out and the time until coal during your mania.", 0.5f, 0.6f) { preview ->
+        hud("Status HUD", "Shows safe / move in / move out and the time until coal during your mania.", 0.5f, 0.6f, title = "Mania Status") { preview ->
             val (label, colour) = if (preview) "SAFE | coal 1.2s" to Colors.MINECRAFT_GREEN
             else hudStatus() ?: return@hud 0 to 0
             text(label, 0, 0, colour)

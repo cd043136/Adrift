@@ -151,6 +151,11 @@ object Config {
         internal fun load(saved: String) {
             entries.firstOrNull { it.name == saved }?.let { current = it }
         }
+
+        /** Picks the entry whose label or enum name is [label], ignoring case. */
+        fun select(label: String) {
+            entries.firstOrNull { name(it).equals(label, true) || it.name.equals(label, true) }?.let { value = it }
+        }
     }
 
     /** A colour, opaque unless [allowAlpha]. Saved as `RRGGBBAA`. */
@@ -224,11 +229,14 @@ object Config {
 
     fun hudLayout(key: String, x: Float, y: Float, scale: Float = 1f) = HudLayout(key, x, y, scale).also(hudLayouts::add)
 
+    fun option(key: String): Option? = categories.asSequence().flatMap { it.sections }.flatMap { it.options }.firstOrNull { it.key == key }
+
     @Volatile private var loaded = false
 
-    fun load() {
+    /** Reads the saved config. Returns false if there was none. */
+    fun load(): Boolean {
         loaded = true
-        if (!Files.isRegularFile(path)) return
+        if (!Files.isRegularFile(path)) return false
         try {
             val json = JsonParser.parseString(Files.readString(path)).asJsonObject
             for (option in registered) {
@@ -261,6 +269,7 @@ object Config {
         } catch (e: Exception) {
             Adrift.LOGGER.warn("Could not read {} config, using defaults", Adrift.MOD_ID, e)
         }
+        return true
     }
 
     private fun IntOption.clampInt(value: Int) = value.coerceIn(min, max)
