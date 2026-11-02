@@ -1,20 +1,15 @@
 package dev.cd.adrift.features.boss
 
-import dev.cd.adrift.Adrift
 import dev.cd.adrift.events.LevelEvent
 import dev.cd.adrift.events.TickEvent
 import dev.cd.adrift.features.Category
 import dev.cd.adrift.features.Module
+import dev.cd.adrift.hud.HudCanvas
 import dev.cd.adrift.utils.SlayerUtils
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
-import net.minecraft.client.DeltaTracker
-import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.resources.sounds.SimpleSoundInstance
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.game.ClientboundSoundPacket
 import net.minecraft.sounds.SoundEvents
-import net.minecraft.util.ARGB
 
 object Twinclaws : Module(
     "Twinclaws",
@@ -41,7 +36,13 @@ object Twinclaws : Module(
 
     private val fixSound = bool("Fix Sound", true, "Replaces the quiet countdown plings with louder ones.")
     private val volume by double("Volume", 1.0, 0.5..2.0, 0.1, "Countdown volume.", parent = fixSound)
-    private val alert = bool("Alert", false, "Shows a title when Twinclaws starts.")
+    private val alertText = Component.literal("§6§lTWINCLAWS!")
+    private val alert = hud("Alert", "Shows an alert when Twinclaws starts.", 0.5f, 0.43f, default = false, title = "Twinclaws Alert", scale = 3f) { preview ->
+        if (!preview && alertUntil <= System.currentTimeMillis()) return@hud 0 to 0
+        val pad = HudCanvas.BACKDROP
+        text(alertText, pad, pad, backdrop = true)
+        width(alertText) + pad * 2 to mc.font.lineHeight + pad * 2
+    }
     private val alertDelay by int("Alert Delay", 0, 0..1000, 10, "Delay before the alert.", "ms", parent = alert)
 
     override val enabled get() = fixSound() || alert()
@@ -67,8 +68,6 @@ object Twinclaws : Module(
         on<TickEvent.Server> { mc.execute { onServerTick() } }
         on<LevelEvent.Load> { reset() }
         for (switch in listOf(fixSound, alert)) switch.onChange { if (!enabled) reset() }
-
-        HudElementRegistry.attachElementAfter(VanillaHudElements.MISC_OVERLAYS, Adrift.id("twinclaws_alert"), ::renderAlert)
     }
 
     private fun onServerTick() {
@@ -116,19 +115,6 @@ object Twinclaws : Module(
             pendingAlertAt = 0L
             alertUntil = now + ALERT_MS
         }
-    }
-
-    private fun renderAlert(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!alert() || alertUntil <= System.currentTimeMillis()) return
-
-        val font = mc.font
-        val text = Component.literal("§6§lTWINCLAWS!")
-        val titleWidth = font.width(text)
-        graphics.pose().pushMatrix()
-        graphics.pose().translate(graphics.guiWidth() / 2f, graphics.guiHeight() / 2f)
-        graphics.pose().scale(3f, 3f)
-        graphics.textWithBackdrop(font, text, -titleWidth / 2, -10, titleWidth, ARGB.white(255))
-        graphics.pose().popMatrix()
     }
 
     private fun reset() {

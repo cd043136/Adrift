@@ -78,11 +78,11 @@ abstract class Module(
      * canvas and returns its size, (0, 0) to hide; with `preview` it draws example content for the HUD editor.
      */
     protected fun hud(
-        label: String, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name,
+        label: String, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name, scale: Float = 1f,
         parent: Config.BoolOption? = main, content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
     ): Config.BoolOption {
         val shown = bool(label, default, desc, parent)
-        HudManager.add(TextHud(title, Config.hudLayout(key(label), x, y), { enabled && shown() }, content))
+        HudManager.add(TextHud(title, Config.hudLayout(key(label), x, y, scale), { enabled && shown() }, content))
         return shown
     }
 
