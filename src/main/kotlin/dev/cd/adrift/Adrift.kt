@@ -3,7 +3,6 @@ package dev.cd.adrift
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.brigadier.Command
 import dev.cd.adrift.config.Config
-import dev.cd.adrift.config.OdinMigration
 import dev.cd.adrift.config.gui.ConfigScreen
 import dev.cd.adrift.events.EventDispatcher
 import dev.cd.adrift.features.Category
@@ -65,7 +64,7 @@ object Adrift : ClientModInitializer {
         Config.category("General").section("Interface").button(
             "general.editHud", "HUD Layout", "Drag HUD elements around, and scroll over one to resize it.", "Edit"
         ) { HudEditorScreen(returnToConfig = true).open() }
-        OdinMigration.migrateIfNeeded(hadConfig = Config.load())
+        Config.load()
 
         ClientTickEvents.END_CLIENT_TICK.register { _ ->
             while (openConfigKey.consumeClick()) ConfigScreen().open()
