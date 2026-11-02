@@ -9,15 +9,18 @@ import dev.cd.adrift.utils.sendCommand
 
 /** Everything Adrift sends to party chat, in one place, for lootsharing. Only about your own boss. */
 object PartyAnnounce : Module(
-    "Party Announce",
+    "Announce",
     Category.PARTY,
     "Sends your boss's spawn, mania phases and kill time to party chat."
 ) {
-    private val spawn by bool("Spawn", false, "Sends your boss's coordinates when it spawns.")
-    private val firstMania by bool("Mania #1", false, "Announces the first mania.")
-    private val secondMania by bool("Mania #2", false, "Announces the second mania.")
-    private val thirdMania by bool("Mania #3", false, "Announces the third mania (T5).")
+    private val spawn by bool("Announce Boss Spawn", false, "Sends your boss's coordinates when it spawns.")
     private val killTime by bool("Kill Time", false, "Sends how long the boss took to kill.")
+    private val mania = bool("Announce Mania", false, "Announces the mania phases you pick.")
+    private val firstMania by bool("Mania #1", false, "Announces the first mania.", parent = mania)
+    private val secondMania by bool("Mania #2", false, "Announces the second mania.", parent = mania)
+    private val thirdMania by bool("Mania #3", false, "Announces the third mania (T5).", parent = mania)
+
+    override val enabled get() = spawn || killTime || mania()
 
     init {
         on<SlayerEvent.Spawn> {
@@ -27,7 +30,7 @@ object PartyAnnounce : Module(
         }
 
         on<SlayerEvent.ManiaStart> {
-            val announce = when (number) {
+            val announce = mania() && when (number) {
                 1 -> firstMania
                 2 -> secondMania
                 3 -> thirdMania

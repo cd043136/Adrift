@@ -29,9 +29,10 @@ object LowHealthWarning : Module(
     }
 
     private val vignette = bool("Vignette", true, "Tints the screen edges.")
-    private val vignetteCol by color("Vignette Colour", Color("ffff0000"), "Hue at the screen edges.", allowAlpha = false)
-        .showIf { vignette() }
+    private val vignetteCol by color("Vignette Colour", Color("ffff0000"), "Hue at the screen edges.", allowAlpha = false, parent = vignette)
     private val playSound by choice("Sound", SoundMode.NONE, "Plays a pling while your health is low.")
+
+    override val enabled get() = vignette() || playSound != SoundMode.NONE
 
     private const val HP_THRESHOLD = 6f
     private const val INTERVAL = 4 // for repeating plings
@@ -83,7 +84,7 @@ object LowHealthWarning : Module(
         SlayerUtils.boss != null || SlayerUtils.lootshareBoss != null
 
     private fun extractOverlay(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!enabled || !vignette() || !inBossFight()) return
+        if (!vignette() || !inBossFight()) return
 
         val player = mc.player ?: return
         if (player.health >= HP_THRESHOLD) return

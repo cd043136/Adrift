@@ -67,6 +67,8 @@ class ConfigScreen : CascadeScreen("Adrift") {
         const val ROW_X = 14f
         const val ROW_W = 788f
         const val ROW_PAD = 16f
+        /** Extra left padding per [Config.Option.depth]. */
+        const val INDENT = 18f
         const val ROW_H = 44f
         const val SECTION_H = 35f
         const val GAP = 12f
@@ -779,7 +781,7 @@ class ConfigScreen : CascadeScreen("Adrift") {
     private abstract inner class Row<O : Config.Option>(val option: O) : Item(ROW_H) {
         protected val name = label(option.label.uppercase(), Montserrat.BOLD.tracked(0.1f), 14f, 0).apply {
             position = AlignPositionConstraint(PositionAlignment.START, PositionAlignment.CENTER)
-            offset = CascadeGeometricOffset(ROW_PAD, 0f)
+            offset = CascadeGeometricOffset(ROW_PAD + option.depth * INDENT, 0f)
             shadow = true
         }
         private val divider = roundedRectangle {

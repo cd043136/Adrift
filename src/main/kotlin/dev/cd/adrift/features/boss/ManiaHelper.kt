@@ -31,9 +31,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
 
 object ManiaHelper : Module(
-    "Mania Helper",
+    "Mania",
     Category.BOSS,
-    "Draws your mania pattern on the ground, helpful for uneven terrain or overlapping mania."
+    "Draws your mania pattern on the ground, helpful for uneven terrain or overlapping mania.",
+    toggle = "Mania Helper",
 ) {
     private const val MAX_RENDER_RADIUS = 30
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0

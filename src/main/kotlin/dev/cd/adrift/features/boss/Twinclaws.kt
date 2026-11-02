@@ -39,10 +39,12 @@ object Twinclaws : Module(
 
     private const val ALERT_MS = 1500L
 
-    private val fixSound by bool("Fix Sound", true, "Replaces the quiet countdown plings with louder ones.")
-    private val volume by double("Volume", 1.0, 0.5..2.0, 0.1, "Countdown volume.").showIf { fixSound }
+    private val fixSound = bool("Fix Sound", true, "Replaces the quiet countdown plings with louder ones.")
+    private val volume by double("Volume", 1.0, 0.5..2.0, 0.1, "Countdown volume.", parent = fixSound)
     private val alert = bool("Alert", false, "Shows a title when Twinclaws starts.")
-    private val alertDelay by int("Alert Delay", 0, 0..1000, 10, "Delay before the alert.", "ms").showIf { alert() }
+    private val alertDelay by int("Alert Delay", 0, 0..1000, 10, "Delay before the alert.", "ms", parent = alert)
+
+    override val enabled get() = fixSound() || alert()
 
     private val PLING = SoundEvents.NOTE_BLOCK_PLING.value().location()
 
@@ -58,18 +60,15 @@ object Twinclaws : Module(
     init {
         onReceive<ClientboundSoundPacket> { event ->
             // todo: option to enable on other bosses maybe
-            if (!fixSound || !inTwinclaws || sound.value().location() != PLING) return@onReceive
+            if (!fixSound() || !inTwinclaws || sound.value().location() != PLING) return@onReceive
             event.cancel()
         }
 
         on<TickEvent.Server> { mc.execute { onServerTick() } }
         on<LevelEvent.Load> { reset() }
+        for (switch in listOf(fixSound, alert)) switch.onChange { if (!enabled) reset() }
 
         HudElementRegistry.attachElementAfter(VanillaHudElements.MISC_OVERLAYS, Adrift.id("twinclaws_alert"), ::renderAlert)
-    }
-
-    override fun onDisable() {
-        reset()
     }
 
     private fun onServerTick() {
@@ -87,7 +86,7 @@ object Twinclaws : Module(
         inTwinclaws = true
         // Only our own boss gets the alert
         if (boss === SlayerUtils.boss) pollAlert()
-        if (fixSound) playCountdown(name)
+        if (fixSound()) playCountdown(name)
     }
 
     private fun playCountdown(name: String) {
@@ -120,7 +119,7 @@ object Twinclaws : Module(
     }
 
     private fun renderAlert(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!enabled || !alert() || alertUntil <= System.currentTimeMillis()) return
+        if (!alert() || alertUntil <= System.currentTimeMillis()) return
 
         val font = mc.font
         val text = Component.literal("§6§lTWINCLAWS!")

@@ -15,9 +15,10 @@ import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Items
 
 object BeaconSoul : Module(
-    "Beacon Soul Helper",
+    "Beacon Soul",
     Category.PARTY,
-    "2 player beacon soul helper: adds a button that sends the grid to party chat (keep the menu open until 8/8)."
+    "2 player beacon soul helper: adds a button that sends the grid to party chat (keep the menu open until 8/8).",
+    toggle = "Beacon Soul Helper",
 ) {
     private const val BEACON_GUI_NAME = "2 Players Soul ➜ Beacon"
 

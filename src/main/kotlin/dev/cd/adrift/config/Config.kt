@@ -19,7 +19,7 @@ import kotlin.reflect.KProperty
  * (`val x by section.bool(...)`) and save themselves when changed.
  *
  * An option is shown while its [Option.dependsOn] switch (and anything that depends on in turn) is on and its
- * [Option.condition] holds. HUD placements are [HudLayout]s saved under `"hud"`, personal bests are [records]
+ * [Option.condition] holds, and is indented under that switch. HUD placements are [HudLayout]s saved under `"hud"`, personal bests are [records]
  * saved under `"records"`, and the config screen's colours are the [Theme], saved under `"theme"`.
  */
 object Config {
@@ -31,6 +31,10 @@ object Config {
 
     class Section internal constructor(val category: Category, val name: String) {
         val options = mutableListOf<Option>()
+
+        /** The switch the whole section hangs off, if it has one; options under it aren't indented. */
+        var main: BoolOption? = null
+            internal set
 
         private fun <O : Option> add(option: O): O = option.also { options += it; if (it.saved) registered += it }
 
@@ -73,6 +77,9 @@ object Config {
 
         /** False while [dependsOn], or anything it depends on in turn, is off, or [condition] fails. */
         val shown: Boolean get() = (dependsOn?.let { it.shown && it() } ?: true) && (condition?.invoke() ?: true)
+
+        /** How far the config screen indents this: a step per switch it hangs off, apart from [Section.main]. */
+        val depth: Int get() = generateSequence(dependsOn) { it.dependsOn }.count { it !== section.main }
 
         private val listeners = mutableListOf<() -> Unit>()
 

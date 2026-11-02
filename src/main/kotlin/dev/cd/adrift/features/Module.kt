@@ -20,46 +20,58 @@ enum class Category(val title: String) {
 }
 
 /**
- * A feature with its own config section: an Enabled switch, then its options, which fold away while it's off.
- * Option keys are `<module>.<option>` in camel case, so renaming a label resets it.
+ * A feature with its own config section called [name]. With a [toggle], the section opens with a switch of that
+ * name and its options fold away while it's off; without one, the module's own switches turn its parts on and off,
+ * and it overrides [enabled] to say whether any of them are. Option keys are `<category>.<section>.<option>` in
+ * camel case, so renaming a label resets it.
  */
-abstract class Module(val name: String, category: Category, val description: String, enabledByDefault: Boolean = false) {
+abstract class Module(
+    val name: String, category: Category, val description: String, toggle: String? = null, enabledByDefault: Boolean = false,
+) {
     protected val mc: Minecraft get() = Minecraft.getInstance()
 
-    val key = camel(name)
+    val key = "${camel(category.title)}.${camel(name)}"
     val section = category.config.section(name)
 
-    private val enabledOption: Config.BoolOption = section.bool("$key.enabled", "Enabled", description, enabledByDefault)
-        .also { option -> option.onChange { if (option()) onEnable() else onDisable() } }
+    /** The section's main switch, from [toggle]; options hang off it unless given another parent. */
+    protected val main: Config.BoolOption? = toggle?.let { label ->
+        section.bool(key(label), label, description, enabledByDefault)
+            .also { option -> option.onChange { if (option()) onEnable() else onDisable() } }
+            .also { section.main = it }
+    }
 
-    val enabled: Boolean get() = enabledOption()
+    /** Whether the module runs at all; without a [toggle], override this. */
+    open val enabled: Boolean get() = main?.invoke() ?: true
 
+    /** Called when the [toggle] switch changes. */
     open fun onEnable() {}
 
     open fun onDisable() {}
 
     private fun key(label: String) = "$key.${camel(label)}"
 
-    protected fun bool(label: String, default: Boolean, desc: String) =
-        section.bool(key(label), label, desc, default, enabledOption)
+    protected fun bool(label: String, default: Boolean, desc: String, parent: Config.BoolOption? = main) =
+        section.bool(key(label), label, desc, default, parent)
 
-    protected fun int(label: String, default: Int, range: IntRange, step: Int = 1, desc: String, unit: String = "") =
-        section.int(key(label), label, desc, default, range.first, range.last, step, unit, enabledOption)
+    protected fun int(label: String, default: Int, range: IntRange, step: Int = 1, desc: String, unit: String = "", parent: Config.BoolOption? = main) =
+        section.int(key(label), label, desc, default, range.first, range.last, step, unit, parent)
 
-    protected fun double(label: String, default: Double, range: ClosedFloatingPointRange<Double>, step: Double, desc: String, unit: String = "") =
-        section.double(key(label), label, desc, default, range.start, range.endInclusive, step, unit, enabledOption)
+    protected fun double(
+        label: String, default: Double, range: ClosedFloatingPointRange<Double>, step: Double, desc: String, unit: String = "",
+        parent: Config.BoolOption? = main,
+    ) = section.double(key(label), label, desc, default, range.start, range.endInclusive, step, unit, parent)
 
     protected inline fun <reified E : Enum<E>> choice(label: String, default: E, desc: String, noinline name: (E) -> String = { it.toString() }) =
         choice(label, default, enumValues<E>().toList(), desc, name)
 
     protected fun <E : Enum<E>> choice(label: String, default: E, entries: List<E>, desc: String, name: (E) -> String) =
-        section.choice(key(label), label, desc, default, entries, enabledOption, name)
+        section.choice(key(label), label, desc, default, entries, main, name)
 
-    protected fun color(label: String, default: Color, desc: String, allowAlpha: Boolean = true) =
-        section.color(key(label), label, desc, default, allowAlpha, enabledOption)
+    protected fun color(label: String, default: Color, desc: String, allowAlpha: Boolean = true, parent: Config.BoolOption? = main) =
+        section.color(key(label), label, desc, default, allowAlpha, parent)
 
     protected fun button(label: String, text: String, desc: String, onClick: () -> Unit) =
-        section.button(key(label), label, desc, text, enabledOption, onClick)
+        section.button(key(label), label, desc, text, main, onClick)
 
     /**
      * A movable HUD element with a switch to show it, called [title] in the HUD editor. [content] draws into the
@@ -67,14 +79,14 @@ abstract class Module(val name: String, category: Category, val description: Str
      */
     protected fun hud(
         label: String, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name,
-        content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
+        parent: Config.BoolOption? = main, content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
     ): Config.BoolOption {
-        val shown = bool(label, default, desc)
+        val shown = bool(label, default, desc, parent)
         HudManager.add(TextHud(title, Config.hudLayout(key(label), x, y), { enabled && shown() }, content))
         return shown
     }
 
-    /** Only runs while the module is enabled. */
+    /** Only runs while the module is [enabled]. */
     protected inline fun <reified T : Event> on(noinline handler: T.() -> Unit) =
         EventBus.register(T::class.java) { if (enabled) it.handler() }
 

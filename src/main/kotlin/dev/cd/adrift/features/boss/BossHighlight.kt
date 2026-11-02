@@ -13,9 +13,10 @@ import net.minecraft.util.ARGB
 import net.minecraft.world.entity.Entity
 
 object BossHighlight : Module(
-    "Boss Highlight",
+    "Render",
     Category.BOSS,
-    "Dynamic boss highlight, including a custom boss render."
+    "Dynamic boss highlight, including a custom boss render.",
+    toggle = "Boss Highlight",
 ) {
     private const val ATTACK_RANGE = 3.0
     private const val STEAK_SYMBOL = "҉"
@@ -37,13 +38,11 @@ object BossHighlight : Module(
         "Box styles draw around the boss; Outline makes it glow; Custom draws it as a flat silhouette with a glow."
     )
     private val onOtherBoss by bool("Highlight Other Boss", false, "Also highlights a boss you're helping someone with.")
-    private val dynamicColouring by bool("Dynamic Colour", false, "Changes colour when the boss is within attack range.")
+    private val dynamicColouring = bool("Dynamic Colour", false, "Changes colour when the boss is within attack range.")
     private val steakColouring = bool("Steak Colour", false, "Changes colour when the boss is steakable; overrides Dynamic Colour.")
     private val defaultColour by color("Default Colour", Color("ffffff40"), "Highlight colour.")
-    private val attackableColour by color("Nearby Colour", Color("ff555540"), "Colour while the boss is within attack range.")
-        .showIf { dynamicColouring }
-    private val steakableColour by color("Steakable Colour", Color("59110140"), "Colour while the boss is steakable.")
-        .showIf { steakColouring() }
+    private val attackableColour by color("Nearby Colour", Color("ff555540"), "Colour while the boss is within attack range.", parent = dynamicColouring)
+    private val steakableColour by color("Steakable Colour", Color("59110140"), "Colour while the boss is steakable.", parent = steakColouring)
 
     init {
         on<RenderWorldEvent> {
@@ -84,11 +83,12 @@ object BossHighlight : Module(
     @JvmStatic
     fun baseColorFor(boss: Entity): Color {
         val steak = steakColouring()
-        if (!dynamicColouring && !steak) return defaultColour
+        val dynamic = dynamicColouring()
+        if (!dynamic && !steak) return defaultColour
         val player = mc.player ?: return defaultColour
 
         if (steak && boss is RemotePlayer && boss.isSteakable()) return steakableColour
-        return if (dynamicColouring && player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
+        return if (dynamic && player.distanceTo(boss) <= ATTACK_RANGE) attackableColour else defaultColour
     }
 
     @JvmStatic

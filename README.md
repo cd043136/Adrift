@@ -26,7 +26,7 @@ Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin. Open
 </details>
 
 <details>
-<summary>Ichor Line</summary>
+<summary>Ichor Helper</summary>
 
 - Draws an indicator from boss to ichor so you don't miss it
 - Support for other people's boss

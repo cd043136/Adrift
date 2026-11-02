@@ -11,12 +11,14 @@ import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 
 object SlayerDrops : Module(
-    "Slayer Drops",
+    "Drops",
     Category.TRACKING,
     "Copies valuable slayer drops to the clipboard and renames the bundle drop."
 ) {
     private val copyDrops by bool("Copy Drops", false, "Copies valuable drop messages to the clipboard.")
     private val bundleRename by bool("Rename Bundle", false, "Renames the bundle drop to 'The One IV Bundle'.")
+
+    override val enabled get() = copyDrops || bundleRename
 
     private const val DROP = "RARE DROP!"
 
@@ -48,7 +50,6 @@ object SlayerDrops : Module(
     init {
         on<ChatEvent> {
             if (!Location.inRift) return@on
-            if (!bundleRename && !copyDrops) return@on
 
             val pieces = component.toFlatList(Style.EMPTY)
             val matched = ValuableDrop.entries.filter { drop -> pieces.any(drop::matches) }

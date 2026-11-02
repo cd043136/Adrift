@@ -19,10 +19,11 @@ import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.phys.Vec3
 import kotlin.math.sqrt
 
-object IchorLine : Module(
-    "Ichor Line",
+object IchorHelper : Module(
+    "Ichor",
     Category.BOSS,
-    "Draws a line from the boss through its ichor so you don't miss it."
+    "Draws a line from the boss through its ichor so you don't miss it.",
+    toggle = "Ichor Helper",
 ) {
     private val lineColour by color("Line Colour", Color("ffffff66"), "Colour of the line.")
     private val otherBoss by bool("On Other Boss", false, "Also draws it for a boss you're helping someone with.")

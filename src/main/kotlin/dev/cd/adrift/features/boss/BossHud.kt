@@ -6,9 +6,9 @@ import dev.cd.adrift.utils.SlayerUtils
 import net.minecraft.network.chat.Component
 
 object BossHud : Module(
-    "Boss HUD",
+    "HUD",
     Category.BOSS,
-    "Shows your boss's timer and nametag on screen."
+    "Shows your boss's timer and nametag on screen.",
 ) {
     private const val LINE_HEIGHT = 10
 
@@ -18,7 +18,7 @@ object BossHud : Module(
     )
 
     init {
-        hud("Show HUD", "Shows the boss's timer and nametag.", 0.5f, 0.3f) { preview ->
+        hud("Boss HUD", "Shows the boss's timer and nametag.", 0.5f, 0.3f, title = "Boss HUD") { preview ->
             val lines = if (preview) example
             else {
                 val boss = SlayerUtils.boss?.takeIf { it.isAlive } ?: return@hud 0 to 0

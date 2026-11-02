@@ -21,19 +21,6 @@ object Splits : Module(
     private const val ROW_HEIGHT = 9
     private const val PB_KEY = "splits.totalPb"
 
-    private val printSplits by bool("Print Splits", false, "Prints the splits in chat after a kill.")
-    private val announcePb by bool("Announce PB", true, "Prints the kill time and your personal best after a kill.")
-    private val damageColor by color("Damage Colour", Colors.MINECRAFT_GREEN, "HUD colour for damage phases.", allowAlpha = false)
-    private val maniaColor by color("Mania Colour", Colors.MINECRAFT_RED, "HUD colour for mania phases.", allowAlpha = false)
-
-    init {
-        button("Reset PB", "Reset", "Clears your kill-time personal best.") {
-            Config.records.remove(PB_KEY)
-            Config.save()
-            modMessage("Vampire PB reset")
-        }
-    }
-
     private enum class Phase { DAMAGE, MANIA }
 
     private class Split(val phase: Phase, val number: Int) {
@@ -47,24 +34,37 @@ object Splits : Module(
     private val splits = CopyOnWriteArrayList<Split>()
     private var damageCount = 0
 
-    init {
-        hud("Show HUD", "Damage/mania splits for the current boss.", 0f, 0.4f) { preview ->
-            val rows = if (preview) listOf(
-                Triple("Damage 1", "12.34s", damageColor),
-                Triple("Mania 1", "4.56s", maniaColor),
-                Triple("Damage 2", "8.90s", damageColor),
-            ) else {
-                if (splits.isEmpty()) return@hud 0 to 0
-                splits.map { Triple(it.label, formatTime(it.ticks * TICK_SECONDS), if (it.phase == Phase.DAMAGE) damageColor else maniaColor) }
-            }
+    private val showHud: Config.BoolOption = hud("Splits HUD", "Damage/mania splits for the current boss.", 0f, 0.4f) { preview ->
+        val rows = if (preview) listOf(
+            Triple("Damage 1", "12.34s", damageColor),
+            Triple("Mania 1", "4.56s", maniaColor),
+            Triple("Damage 2", "8.90s", damageColor),
+        ) else {
+            if (splits.isEmpty()) return@hud 0 to 0
+            splits.map { Triple(it.label, formatTime(it.ticks * TICK_SECONDS), if (it.phase == Phase.DAMAGE) damageColor else maniaColor) }
+        }
 
-            val labelWidth = rows.maxOf { width(it.first) }
-            val timeWidth = width("59.99s") + 2
-            rows.forEachIndexed { i, (label, time, color) ->
-                text(label, 0, i * ROW_HEIGHT, color)
-                text(time, labelWidth + 4 + timeWidth - width(time), i * ROW_HEIGHT, color)
-            }
-            (labelWidth + 4 + timeWidth + 2) to ROW_HEIGHT * rows.size
+        val labelWidth = rows.maxOf { width(it.first) }
+        val timeWidth = width("59.99s") + 2
+        rows.forEachIndexed { i, (label, time, color) ->
+            text(label, 0, i * ROW_HEIGHT, color)
+            text(time, labelWidth + 4 + timeWidth - width(time), i * ROW_HEIGHT, color)
+        }
+        (labelWidth + 4 + timeWidth + 2) to ROW_HEIGHT * rows.size
+    }
+
+    private val damageColor by color("Damage Colour", Colors.MINECRAFT_GREEN, "HUD colour for damage phases.", allowAlpha = false, parent = showHud)
+    private val maniaColor by color("Mania Colour", Colors.MINECRAFT_RED, "HUD colour for mania phases.", allowAlpha = false, parent = showHud)
+    private val printSplits by bool("Print Splits", false, "Prints the splits in chat after a kill.")
+    private val announcePb by bool("Announce PB", true, "Prints the kill time and your personal best after a kill.")
+
+    override val enabled get() = showHud() || printSplits || announcePb
+
+    init {
+        button("Reset PB", "Reset", "Clears your kill-time personal best.") {
+            Config.records.remove(PB_KEY)
+            Config.save()
+            modMessage("Vampire PB reset")
         }
 
         on<SlayerEvent.Spawn> {
@@ -85,10 +85,6 @@ object Splits : Module(
         on<SlayerEvent.Complete> { finishFight(ticks) }
         on<SlayerEvent.Fail> { reset() }
         on<LevelEvent.Unload> { reset() }
-    }
-
-    override fun onDisable() {
-        reset()
     }
 
     private fun startDamage() {
