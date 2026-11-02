@@ -311,7 +311,6 @@ internal class ManiaSession(
     fun finish(reason: String) {
         if (!log.enabled) return
         val centre = if (locked) "($centreX, $centreZ)" else "unlocked"
-        log.chat("Session ended ($reason): ${cycleIndex + 1} cycles, centre $centre")
         log.file("END reason=$reason cycles=${cycleIndex + 1} centre=$centre")
     }
 
@@ -531,7 +530,6 @@ internal class ManiaSession(
                 val offZ = bossZ - (bestZ + 0.5)
                 val message = "Centre locked ($bestX, $bestZ), guess ($guessX, $guessZ), " +
                     "boss offset (%.2f, %.2f), %s".format(offX, offZ, fitSummary)
-                log.chat(message)
                 log.file("LOCK $message")
             }
             return
@@ -714,7 +712,6 @@ internal class ManiaSession(
     private fun logBatch(tick: Long, g: Int, r: Int, rs: Int, c: Int, n: Int, inCircle: Int, outcome: String) {
         if (!log.enabled) return
         val line = "t$tick G$g R$r RS$rs C$c N$n in=$inCircle -> $outcome | $phase ring $greenRing cycle ${cycleIndex + 1}"
-        log.chat(line)
         log.file("BATCH $line")
     }
 

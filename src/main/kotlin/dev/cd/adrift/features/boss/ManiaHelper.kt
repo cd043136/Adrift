@@ -25,6 +25,7 @@ import java.io.BufferedWriter
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
@@ -37,6 +38,7 @@ object ManiaHelper : Module(
     private const val MAX_RENDER_RADIUS = 30
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0
     private const val SCAN_DELAY_TICKS = 40
+    private const val MAX_LOGGED_SESSIONS = 100
     private const val TEXT_HEIGHT = 9
     private const val PLANE_Y_OFFSET = 0.1
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
@@ -61,7 +63,6 @@ object ManiaHelper : Module(
     private val terracottaColour by color("Red Terracotta Colour", Color("b4503c80"), "Red terracotta ring colour.")
     private val redstoneColour by color("Redstone Colour", Color("ff202080"), "Redstone ring colour.")
     private val coalColour by color("Coal Colour", Color("1a1a1a99"), "Coal colour.")
-    private val debug by bool("Debug", false, "Logs batches and centre fitting to chat and config/adrift/mania_debug.log.")
 
     init {
         hud("Status HUD", "Shows safe / move in / move out and the time until coal during your mania.", 0.5f, 0.6f, title = "Mania Status") { preview ->
@@ -94,8 +95,8 @@ object ManiaHelper : Module(
     private var debugWriterFailed = false
 
     private val log = object : ManiaLog {
-        override val enabled: Boolean get() = debug
-        override fun chat(message: String) = modMessage("§7[Mania]§r $message")
+        override val enabled: Boolean get() = true
+        override fun chat(message: String) = file("MSG $message")
         override fun file(line: String) {
             val writer = debugWriter ?: openDebugLog() ?: return
             try {
@@ -189,7 +190,7 @@ object ManiaHelper : Module(
         val s = session ?: return
         s.tick(tick)
         runWorldScan(s, tick)
-        if (session === s && debug) logTick(s, tick)
+        if (session === s) logTick(s, tick)
     }
 
     /** Batches are everything that arrived before this tick's ping, grouped by the tick they arrived in. */
@@ -250,11 +251,7 @@ object ManiaHelper : Module(
         captureZ = s.guessZ
         capturing = true
         debugWriterFailed = false
-        if (debug) {
-            val message = "Mania started, guess (${s.guessX}, ${s.guessZ}), boss y %.2f".format(s.bossY)
-            log.chat(message)
-            log.file("START tick=${s.startTick} $message")
-        }
+        log.file("START tick=${s.startTick} Mania started, guess (${s.guessX}, ${s.guessZ}), boss y %.2f".format(s.bossY))
     }
 
     private fun endSession(reason: String) {
@@ -285,7 +282,7 @@ object ManiaHelper : Module(
         val level = sessionLevel ?: return
         val scan = worldScan ?: WorldScan(s.guessX, s.guessZ, Mth.floor(s.bossY)).also {
             worldScan = it
-            if (debug) log.chat("No block packets after ${SCAN_DELAY_TICKS}t, scanning the world instead")
+            log.chat("No block packets after ${SCAN_DELAY_TICKS}t, scanning the world instead")
         }
         scan.scan(level, player.blockY, s, tick, batch)
         flushBatch(tick, synthetic = true)
@@ -335,6 +332,7 @@ object ManiaHelper : Module(
         return try {
             val path = FabricLoader.getInstance().configDir.resolve("adrift").resolve("mania_debug.log")
             Files.createDirectories(path.parent)
+            trimDebugLog(path)
             Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
                 .also { debugWriter = it }
         } catch (e: IOException) {
@@ -342,6 +340,16 @@ object ManiaHelper : Module(
             modMessage("Mania debug log unavailable: ${e.message}")
             null
         }
+    }
+
+    /** Drops the oldest sessions so that, with the one about to start, at most [MAX_LOGGED_SESSIONS] remain. */
+    private fun trimDebugLog(path: Path) {
+        if (!Files.exists(path)) return
+        val lines = Files.readAllLines(path, StandardCharsets.UTF_8)
+        val starts = lines.indices.filter { lines[it].startsWith("START ") }
+        val excess = starts.size - (MAX_LOGGED_SESSIONS - 1)
+        if (excess <= 0) return
+        Files.write(path, lines.subList(starts[excess], lines.size), StandardCharsets.UTF_8)
     }
 
     private fun closeDebugLog() {
