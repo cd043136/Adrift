@@ -1,17 +1,10 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.boss
 
-//? if >=26.2 {
-import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
-//?} else
-//import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
-import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
-import com.odtheking.odin.clickgui.settings.impl.ColorSetting
-import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
-import com.odtheking.odin.events.TickEvent
-import com.odtheking.odin.events.core.on
-import com.odtheking.odin.features.Module
-import com.odtheking.odin.utils.Color
-import dev.cd.adrift.utils.Category
+import dev.cd.adrift.Adrift
+import dev.cd.adrift.events.TickEvent
+import dev.cd.adrift.features.Category
+import dev.cd.adrift.features.Module
+import dev.cd.adrift.utils.Color
 import dev.cd.adrift.utils.SlayerUtils
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
@@ -24,39 +17,22 @@ import net.minecraft.util.ARGB
 import net.minecraft.util.Mth
 import net.minecraft.resources.Identifier
 
-object HealthWarning : Module(
+object LowHealthWarning : Module(
     "Low Health Warning",
-    category = Category.RIFT,
-    description = "Warns when your hp is low"
+    Category.BOSS,
+    "Warns you when your health is critically low during a boss fight."
 ) {
-    private val vignette by BooleanSetting(
-        "Vignette",
-        default = true,
-        desc = "Enable vignette"
-    )
-    private val vignetteCol by ColorSetting(
-        "Vignette Colour",
-        default = Color("ffff0000"),
-        desc = "Hue preserved at the screen edges",
-        allowAlpha = false
-    ).withDependency { vignette }
-    private enum class SoundMode { NONE, ONCE, REPEAT }
+    private enum class SoundMode(private val label: String) {
+        NONE("None"), ONCE("Once"), REPEAT("Repeat");
 
-    //? if >=26.2 {
-    private val playSound by SelectorSetting(
-        "Sound",
-        default = SoundMode.NONE,
-        desc = "Plays a pling sound when low hp"
-    )
-    //?} else {
-    /*private val playSoundIndex by SelectorSetting(
-        "Sound",
-        default = "None",
-        options = listOf("None", "Once", "Repeat"),
-        desc = "Plays a pling sound when low hp"
-    )
-    private val playSound: SoundMode get() = SoundMode.entries[playSoundIndex]
-    *///?}
+        override fun toString() = label
+    }
+
+    private val vignette = bool("Vignette", true, "Tints the screen edges.")
+    private val vignetteCol by color("Vignette Colour", Color("ffff0000"), "Hue at the screen edges.", allowAlpha = false)
+        .showIf { vignette() }
+    private val playSound by choice("Sound", SoundMode.NONE, "Plays a pling while your health is low.")
+
     private const val HP_THRESHOLD = 6f
     private const val INTERVAL = 4 // for repeating plings
     private val VIGNETTE_LOCATION = Identifier.withDefaultNamespace("textures/misc/vignette.png")
@@ -65,11 +41,7 @@ object HealthWarning : Module(
     private var soundPlayed = false
 
     init {
-        HudElementRegistry.attachElementAfter(
-            VanillaHudElements.MISC_OVERLAYS,
-            Identifier.fromNamespaceAndPath("adrift", "health_warning"),
-            ::extractOverlay
-        )
+        HudElementRegistry.attachElementAfter(VanillaHudElements.MISC_OVERLAYS, Adrift.id("health_warning"), ::extractOverlay)
 
         on<TickEvent.End> {
             if (!inBossFight() || playSound == SoundMode.NONE) {
@@ -111,7 +83,7 @@ object HealthWarning : Module(
         SlayerUtils.boss != null || SlayerUtils.lootshareBoss != null
 
     private fun extractOverlay(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!enabled || !vignette || !inBossFight()) return
+        if (!enabled || !vignette() || !inBossFight()) return
 
         val player = mc.player ?: return
         if (player.health >= HP_THRESHOLD) return

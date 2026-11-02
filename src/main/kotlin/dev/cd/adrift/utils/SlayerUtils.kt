@@ -1,15 +1,11 @@
 package dev.cd.adrift.utils
 
-import com.odtheking.odin.events.LevelEvent
-import com.odtheking.odin.events.MessageEvent
-import com.odtheking.odin.events.TickEvent
-import com.odtheking.odin.events.core.on
-import com.odtheking.odin.events.core.onReceive
-import com.odtheking.odin.utils.skyblock.Island
-import com.odtheking.odin.utils.skyblock.LocationUtils
+import dev.cd.adrift.events.ChatEvent
+import dev.cd.adrift.events.EventBus
+import dev.cd.adrift.events.LevelEvent
 import dev.cd.adrift.events.SlayerEvent
+import dev.cd.adrift.events.TickEvent
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback
-import net.minecraft.client.Minecraft
 import net.minecraft.client.player.RemotePlayer
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
 import net.minecraft.world.InteractionResult
@@ -21,11 +17,19 @@ import net.minecraft.world.entity.EntityTypes
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.level.Level
 
+/**
+ * Finds our vampire boss (and one boss we're helping with), its timer stand, and follows the fight: spawn, mania
+ * phases and the kill, posted as [SlayerEvent]s so features don't each track them.
+ */
 object SlayerUtils {
     private val SPAWN_REGEX = Regex("SLAYER BOSS! The Bloodfiend (?:I|II|III|IV|V) spawned!")
 
     private const val BOSS_NAME = "Bloodfiend "
     private const val CANDIDATE_WINDOW_MS = 10_000L
+    private const val QUEST_COMPLETE = "SLAYER QUEST COMPLETE!"
+    private const val QUEST_FAILED = "SLAYER QUEST FAILED!"
+    /** How long after the boss vanishes to wait for the quest outcome. */
+    private const val OUTCOME_TIMEOUT_TICKS = 200
 
     private data class SpawnCandidate(val id: Int, val at: Long)
     private val pending = ArrayDeque<SpawnCandidate>()
@@ -37,30 +41,56 @@ object SlayerUtils {
     var timer: ArmorStand? = null
     var lootshareBoss: RemotePlayer? = null
 
-    init {
-        on<TickEvent.Server> { Minecraft.getInstance().execute { tick() } }
-        on<LevelEvent.Load> { reset() }
+    /** Whether our boss is in a mania phase right now. */
+    var inMania = false
+        private set
 
-        onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
+    // Fight state, main thread only
+    private var fighting = false
+    private var fightTicks = 0
+    private var maniaCount = 0
+    private var awaitingOutcome = false
+    private var outcomeTicks = 0
+
+    fun register() {
+        EventBus.on<TickEvent.Server> { mc.execute { tick() } }
+        EventBus.on<LevelEvent.Load> { reset() }
+
+        EventBus.onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
             //? if >=26.2 {
             if (type != EntityTypes.PLAYER) return@onReceive
             //?} else
             //if (type != EntityType.PLAYER) return@onReceive
             val id = id
             val now = System.currentTimeMillis()
-            Minecraft.getInstance().execute {
-                if (LocationUtils.currentArea != Island.Rift) return@execute
+            mc.execute {
+                if (!Location.inRift) return@execute
                 pending.addLast(SpawnCandidate(id, now))
             }
         }
 
-        on<MessageEvent.Chat> {
-            if (LocationUtils.currentArea != Island.Rift) return@on
+        EventBus.on<ChatEvent> {
+            if (!Location.inRift) return@on
 
             if (message.matches(SPAWN_REGEX)) {
                 if (boss?.isAlive == true) return@on // someone else's spawn, ours is already bound
                 awaitingSpawnUntil = System.currentTimeMillis() + CANDIDATE_WINDOW_MS
                 tryBind()
+                return@on
+            }
+
+            if (!fighting && !awaitingOutcome) return@on
+            val lines = message.split("\n").map { it.trim() }
+            when {
+                lines.any { it == QUEST_COMPLETE } -> {
+                    val ticks = fightTicks
+                    endFight()
+                    SlayerEvent.Complete(ticks).post()
+                }
+                lines.any { it == QUEST_FAILED } -> {
+                    endFight()
+                    SlayerEvent.Fail.post()
+                }
             }
         }
 
@@ -71,17 +101,25 @@ object SlayerUtils {
         }
     }
 
-    fun init() {
-        println("SlayerUtils initialised")
-    }
-
     private fun reset() {
+        val wasFighting = fighting || awaitingOutcome
         boss = null
         lootshareBoss = null
         timer = null
         pending.clear()
         verified.clear()
         awaitingSpawnUntil = 0L
+        endFight()
+        if (wasFighting) SlayerEvent.Fail.post()
+    }
+
+    private fun endFight() {
+        fighting = false
+        awaitingOutcome = false
+        inMania = false
+        fightTicks = 0
+        maniaCount = 0
+        outcomeTicks = 0
     }
 
     private fun tick() {
@@ -96,36 +134,55 @@ object SlayerUtils {
 
         if (timer?.isRemoved == true) timer = null
 
-        // fetch timer stand
+        // fetch timer stand: +1 = nametag ("Bloodfiend V 625❤"), +2 = timer ("03:59 SPECTRAL 0.9s"), +3 = "SLAYER BOSS"
         if (boss != null && timer == null) {
-            val world = Minecraft.getInstance().level
-            val timerId = boss.id + 2
-
-            if (world != null) {
-                // +1=Bloodfiend I 625/625❤ | +2=03:59 SPECTRAL 0.9s | +3=SLAYER BOSS
-                // val offset1 = world.getEntity(boss.id + 1)?.plainTextName ?: "null"
-                // val offset2 = world.getEntity(boss.id + 2)?.plainTextName ?: "null"
-                // val offset3 = world.getEntity(boss.id + 3)?.plainTextName ?: "null"
-                // modMessage("+1=${offset1} | +2=${offset2} | +3=${offset3}")
-
-                val maybe = world.getEntity(timerId)
-                if (maybe is ArmorStand && maybe.plainTextName.contains(":")) timer = maybe
-            }
+            val maybe = mc.level?.getEntity(boss.id + 2)
+            if (maybe is ArmorStand && maybe.plainTextName.contains(":")) timer = maybe
         }
 
         // boss death check
-        boss?.let {
-            if (!it.isAlive) {
-                this.boss = null
-                this.timer = null
-            }
+        if (boss != null && !boss.isAlive) {
+            this.boss = null
+            this.timer = null
         }
+
+        tickFight()
+    }
+
+    private fun tickFight() {
+        if (awaitingOutcome) {
+            if (++outcomeTicks > OUTCOME_TIMEOUT_TICKS) {
+                endFight()
+                SlayerEvent.Fail.post()
+            }
+            return
+        }
+        if (!fighting) return
+
+        if (boss?.isAlive != true) {
+            // No ManiaEnd: the fight is over, not back to a damage phase
+            inMania = false
+            fighting = false
+            awaitingOutcome = true
+            outcomeTicks = 0
+            return
+        }
+
+        val mania = timer?.plainTextName?.contains("MANIA") == true
+        if (mania && !inMania) {
+            inMania = true
+            SlayerEvent.ManiaStart(++maniaCount).post()
+        } else if (!mania && inMania) {
+            inMania = false
+            SlayerEvent.ManiaEnd(maniaCount).post()
+        }
+        SlayerEvent.Tick(++fightTicks).post()
     }
 
     private fun verifyPending() {
-        if (LocationUtils.currentArea != Island.Rift) return
-        val level = Minecraft.getInstance().level ?: return
-        
+        if (!Location.inRift) return
+        val level = mc.level ?: return
+
         pruneExpired()
 
         val it = pending.iterator()
@@ -145,9 +202,8 @@ object SlayerUtils {
     }
 
     private fun retrySpawnBind() {
-        val now = System.currentTimeMillis()
         if (awaitingSpawnUntil == 0L) return
-        if (now >= awaitingSpawnUntil) {
+        if (System.currentTimeMillis() >= awaitingSpawnUntil) {
             awaitingSpawnUntil = 0L
             return
         }
@@ -155,7 +211,7 @@ object SlayerUtils {
     }
 
     private fun tryBind() {
-        val level = Minecraft.getInstance().level ?: return
+        val level = mc.level ?: return
         verifyPending()
         pruneExpired()
 
@@ -164,17 +220,20 @@ object SlayerUtils {
             val e = level.getEntity(verified[i].id)
             if (e is RemotePlayer && e.plainTextName == BOSS_NAME) {
                 boss = e
+                timer = null
                 pending.clear()
                 verified.clear()
                 awaitingSpawnUntil = 0L
-                SlayerEvent.Spawn(e).postAndCatch()
+                endFight()
+                fighting = true
+                SlayerEvent.Spawn(e).post()
                 return
             }
         }
     }
 
     private fun onAttack(level: Level, entity: Entity) {
-        if (LocationUtils.currentArea != Island.Rift || lootshareBoss != null) return // 1 boss max, maybe figure out a better system later
+        if (!Location.inRift || lootshareBoss != null) return // 1 boss max, maybe figure out a better system later
         if (entity !is RemotePlayer || entity.plainTextName != BOSS_NAME || entity === boss) return
 
         val s = level.getEntity(entity.id + 1) ?: return

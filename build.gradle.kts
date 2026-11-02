@@ -12,9 +12,9 @@ version = prop("mod.version")
 
 repositories {
     mavenCentral()
-    maven("https://jitpack.io")
     maven("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1")
-    maven("https://api.modrinth.com/maven")
+    // Cascade, the UI library the config screen is built with (https://github.com/skies-starred/cascade)
+    maven("https://maven.starred.foo/releases")
 }
 
 dependencies {
@@ -24,17 +24,14 @@ dependencies {
     implementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric_api")}")
 
     runtimeOnly("me.djtheredstoner:DevAuth-fabric:${prop("deps.devauth")}")
-    implementation("maven.modrinth:odin:${prop("deps.odin")}")
 
-    implementation("com.github.stivais:Commodore:${prop("deps.commodore")}")
-
-    prop("deps.lwjgl").let { lwjglVersion ->
-        implementation("org.lwjgl:lwjgl-nanovg:$lwjglVersion")
-
-        listOf("windows", "linux", "macos", "macos-arm64").forEach { os ->
-            implementation("org.lwjgl:lwjgl-nanovg:$lwjglVersion:natives-$os")
-        }
-    }
+    // Bundled so it needn't be installed separately; published per Minecraft version as <version>+<minecraft>
+    val cascade = "foo.starred:cascade:${prop("deps.cascade")}+$minecraftVersion"
+    implementation(cascade)
+    include(cascade)
+    // SVG rasterizer for CascadeSVG, which Cascade doesn't bundle
+    implementation("com.github.weisj:jsvg:${prop("deps.jsvg")}")
+    include("com.github.weisj:jsvg:${prop("deps.jsvg")}")
 }
 
 loom {
@@ -70,7 +67,6 @@ tasks {
             "loader_version" to prop("deps.fabric_loader"),
             "fabric_api_version" to prop("deps.fabric_api"),
             "fabric_kotlin_version" to prop("deps.fabric_kotlin"),
-            "odin_version" to prop("deps.odin"),
         )
         inputs.properties(props)
         filesMatching("fabric.mod.json") {
@@ -81,7 +77,6 @@ tasks {
     compileKotlin {
         compilerOptions {
             jvmTarget = JvmTarget.JVM_25
-            freeCompilerArgs.add("-Xlambdas=class") //Commodore
         }
     }
 

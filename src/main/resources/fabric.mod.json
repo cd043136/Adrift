@@ -3,7 +3,7 @@
   "id": "adrift",
   "version": "${version}",
   "name": "Adrift",
-  "description": "Rift addon for Odin",
+  "description": "Rift and vampire slayer features for Hypixel Skyblock",
   "authors": [],
   "contact": {},
   "license": "BSD-3-Clause",
@@ -26,6 +26,6 @@
     "minecraft": "${minecraft_version_range}",
     "java": ">=25",
     "fabric-language-kotlin": ">=${fabric_kotlin_version}",
-    "odin": ">=${odin_version}"
+    "cascade": "*"
   }
 }

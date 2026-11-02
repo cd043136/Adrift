@@ -1,34 +1,16 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.boss
 
-//? if >=26.2 {
-import com.odtheking.odin.clickgui.settings.RenderableSetting.Companion.withDependency
-//?} else
-//import com.odtheking.odin.clickgui.settings.Setting.Companion.withDependency
-import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
-import com.odtheking.odin.clickgui.settings.impl.ColorSetting
-import com.odtheking.odin.clickgui.settings.impl.NumberSetting
-import com.odtheking.odin.clickgui.settings.impl.SelectorSetting
-import com.odtheking.odin.events.LevelEvent
-//? if >=26.2 {
-import com.odtheking.odin.events.RenderExtractEvent
-//?} else
-//import dev.cd.adrift.utils.RenderExtractEvent
-import com.odtheking.odin.events.TickEvent
-import com.odtheking.odin.events.core.on
-import com.odtheking.odin.events.core.onReceive
-import com.odtheking.odin.features.Module
-import com.odtheking.odin.utils.Color
-import com.odtheking.odin.utils.Colors
-import com.odtheking.odin.utils.modMessage
-import com.odtheking.odin.utils.render.drawFilledBox
-import com.odtheking.odin.utils.render.getStringWidth
-import com.odtheking.odin.utils.render.text
-import com.odtheking.odin.utils.skyblock.Island
-import com.odtheking.odin.utils.skyblock.LocationUtils
-import dev.cd.adrift.utils.Category
-import dev.cd.adrift.utils.RenderUtils.drawFlatSquare
-import dev.cd.adrift.utils.RenderUtils.tintBoxes
+import dev.cd.adrift.events.LevelEvent
+import dev.cd.adrift.events.RenderWorldEvent
+import dev.cd.adrift.events.TickEvent
+import dev.cd.adrift.features.Category
+import dev.cd.adrift.features.Module
+import dev.cd.adrift.utils.Color
+import dev.cd.adrift.utils.Colors
+import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.SlayerUtils
+import dev.cd.adrift.utils.modMessage
+import dev.cd.adrift.utils.render.quads
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -38,6 +20,7 @@ import net.minecraft.util.Mth
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.shapes.VoxelShape
 import java.io.BufferedWriter
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -48,8 +31,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 object ManiaHelper : Module(
     "Mania Helper",
-    category = Category.RIFT,
-    description = "Draws your mania pattern on the ground, helpful for uneven terrain or overlapping mania"
+    Category.BOSS,
+    "Draws your mania pattern on the ground, helpful for uneven terrain or overlapping mania."
 ) {
     private const val MAX_RENDER_RADIUS = 30
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0
@@ -59,70 +42,39 @@ object ManiaHelper : Module(
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
 
-    private enum class RenderStyle { PLANE, BLOCK_TINT }
+    private enum class RenderStyle(private val label: String) {
+        PLANE("Plane"), BLOCK_TINT("Block Tint");
 
-    //? if >=26.2 {
-    private val style by SelectorSetting(
-        name = "Render style",
-        default = RenderStyle.PLANE,
-        desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
-    )
-    private val squareSize by NumberSetting("Square size", 0.5, 0.1..1.0, 0.05, desc = "Side length of the plane squares")
-    //?} else {
-    /*private val styleIndex by SelectorSetting(
-        name = "Render style",
-        default = "Plane",
-        options = listOf("Plane", "Block Tint"),
-        desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
-    )
-    private val style: RenderStyle get() = RenderStyle.entries[styleIndex]
-    private val squareSize by NumberSetting("Square size", 0.5, 0.1, 1.0, 0.05, desc = "Side length of the plane squares")
-    *///?}
-        .withDependency { style != RenderStyle.BLOCK_TINT }
-    private val renderRadius by NumberSetting(
-        "Render radius",
-        MAX_RENDER_RADIUS,
-        //? if >=26.2 {
-        3..MAX_RENDER_RADIUS,
-        //?} else {
-        /*3,
-        MAX_RENDER_RADIUS,
-        *///?}
-        1,
-        desc = "Only render columns this close to you, max renders the whole pattern",
-        unit = " blocks"
-    )
-    private val safeOnly by BooleanSetting("Safe only", default = false, desc = "Only render the safe (green) ring")
-    private val onlyDifferent by BooleanSetting(
-        "Only where different",
-        default = false,
-        desc = "Skip columns where the real block already shows the right mania block"
-    )
-    private val safeColour by ColorSetting("Safe colour", default = Color("55ff5599"), allowAlpha = true, desc = "")
-    private val terracottaColour by ColorSetting(
-        "Red terracotta colour",
-        default = Color("b4503c80"),
-        allowAlpha = true,
-        desc = ""
-    )
-    private val redstoneColour by ColorSetting("Redstone colour", default = Color("ff202080"), allowAlpha = true, desc = "")
-    private val coalColour by ColorSetting("Coal colour", default = Color("1a1a1a99"), allowAlpha = true, desc = "")
-    private val debug by BooleanSetting(
-        "Debug",
-        default = false,
-        desc = "Log batches and centre fitting to chat and config/adrift/mania_debug.log"
-    )
+        override fun toString() = label
+    }
 
-    private val hud by HUD("Mania Status", desc = "Safe / move in / move out and time until coal during your mania") { example ->
-        val (label, colour) = if (example) "SAFE | coal 1.2s" to Colors.MINECRAFT_GREEN
-        else hudStatus() ?: return@HUD 0 to 0
-        text(label, 0, 0, colour)
-        getStringWidth(label) to TEXT_HEIGHT
+    private val style by choice("Render Style", RenderStyle.PLANE, "Plane draws a square on each block; Block Tint colours the blocks themselves.")
+    private val squareSize by double("Square Size", 0.5, 0.1..1.0, 0.05, "Side length of the plane squares.")
+        .showIf { style != RenderStyle.BLOCK_TINT }
+    private val renderRadius by int(
+        "Render Radius", MAX_RENDER_RADIUS, 3..MAX_RENDER_RADIUS, 1,
+        "Only draws columns this close to you; the maximum draws the whole pattern.", " blocks"
+    )
+    private val safeOnly by bool("Safe Only", false, "Only draws the safe (green) ring.")
+    private val onlyDifferent by bool("Only Where Different", false, "Skips columns where the real block already shows the right mania block.")
+    private val safeColour by color("Safe Colour", Color("55ff5599"), "Safe ring colour.")
+    private val terracottaColour by color("Red Terracotta Colour", Color("b4503c80"), "Red terracotta ring colour.")
+    private val redstoneColour by color("Redstone Colour", Color("ff202080"), "Redstone ring colour.")
+    private val coalColour by color("Coal Colour", Color("1a1a1a99"), "Coal colour.")
+    private val debug by bool("Debug", false, "Logs batches and centre fitting to chat and config/adrift/mania_debug.log.")
+
+    init {
+        hud("Status HUD", "Shows safe / move in / move out and the time until coal during your mania.", 0.5f, 0.6f) { preview ->
+            val (label, colour) = if (preview) "SAFE | coal 1.2s" to Colors.MINECRAFT_GREEN
+            else hudStatus() ?: return@hud 0 to 0
+            text(label, 0, 0, colour)
+            width(label) to TEXT_HEIGHT
+        }
     }
 
     private val maniaRegex = Regex("""MANIA (\d+(?:\.\d+)?)s""")
 
-    // Odin posts packets and server ticks on the netty thread: only these fields are touched there.
+    // Packets and server ticks arrive on the netty thread: only these fields are touched there.
     private val serverTick = AtomicLong()
     private val pending = ConcurrentLinkedQueue<ManiaUpdate>()
     @Volatile private var capturing = false
@@ -165,7 +117,7 @@ object ManiaHelper : Module(
 
         on<TickEvent.Server> {
             val tick = serverTick.incrementAndGet()
-            if (!capturing && LocationUtils.currentArea != Island.Rift) return@on
+            if (!capturing && !Location.inRift) return@on
             // Queued behind the block packets of this tick, so the world is up to date when it runs.
             mc.execute { onServerTick(tick) }
         }
@@ -173,7 +125,7 @@ object ManiaHelper : Module(
         on<LevelEvent.Load> { reset() }
         on<LevelEvent.Unload> { reset() }
 
-        on<RenderExtractEvent> {
+        on<RenderWorldEvent> {
             val s = session ?: return@on
             if (!s.locked || s.cycleIndex < 0) return@on
             val player = mc.player ?: return@on
@@ -195,27 +147,29 @@ object ManiaHelper : Module(
             val skipMatching = onlyDifferent
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
 
-            for (i in 0 until ManiaGeometry.offsetCount) {
-                val expected = s.expectedBlock(ManiaGeometry.offsetBand[i]) ?: continue
-                if (greenOnly && expected != ManiaBlock.GREEN) continue
-                val x = s.centreX + ManiaGeometry.offsetX[i]
-                val z = s.centreZ + ManiaGeometry.offsetZ[i]
-                val dx = x + 0.5 - px
-                val dz = z + 0.5 - pz
-                if (dx * dx + dz * dz > radiusSq) continue
-                surfaceCache.ensure(i, level, x, z)
-                val colour = colours[expected.ordinal]
-                for (surface in surfaceCache.surfaces[i]) {
-                    if (skipMatching && surface.type == expected) continue
-                    if (blockTint) for (box in surface.tints) drawFilledBox(box, colour, true)
-                    else drawFlatSquare(x + 0.5, z + 0.5, surface.top + PLANE_Y_OFFSET, size, colour, true)
+            // One batch for the whole pattern instead of a draw per square
+            quads(depth = true) {
+                for (i in 0 until ManiaGeometry.offsetCount) {
+                    val expected = s.expectedBlock(ManiaGeometry.offsetBand[i]) ?: continue
+                    if (greenOnly && expected != ManiaBlock.GREEN) continue
+                    val x = s.centreX + ManiaGeometry.offsetX[i]
+                    val z = s.centreZ + ManiaGeometry.offsetZ[i]
+                    val dx = x + 0.5 - px
+                    val dz = z + 0.5 - pz
+                    if (dx * dx + dz * dz > radiusSq) continue
+                    surfaceCache.ensure(i, level, x, z)
+                    val colour = colours[expected.ordinal]
+                    for (surface in surfaceCache.surfaces[i]) {
+                        if (skipMatching && surface.type == expected) continue
+                        if (blockTint) for (box in surface.tints) box(box, colour)
+                        else flatSquare(x + 0.5, z + 0.5, surface.top + PLANE_Y_OFFSET, size, colour)
+                    }
                 }
             }
         }
     }
 
     override fun onDisable() {
-        super.onDisable()
         reset()
     }
 
@@ -269,7 +223,7 @@ object ManiaHelper : Module(
         val level = mc.level
         val boss = SlayerUtils.boss?.takeIf { it.isAlive }
         val timerText = boss?.let { (SlayerUtils.timer ?: level?.getEntity(it.id + 2))?.plainTextName }
-        val inMania = level != null && LocationUtils.currentArea == Island.Rift && timerText?.contains("MANIA") == true
+        val inMania = level != null && Location.inRift && timerText?.contains("MANIA") == true
 
         if (session != null) {
             if (!inMania) endSession(if (boss == null) "boss gone" else "mania over")
@@ -400,6 +354,13 @@ object ManiaHelper : Module(
     }
 
     private class Surface(val top: Double, val type: ManiaBlock, val tints: List<AABB>)
+
+    /**
+     * Shape-accurate block tint boxes: the block's own collision boxes at (x, y, z), grown by [epsilon] so they
+     * don't z-fight the block faces, so stairs/slabs/fences hug their geometry.
+     */
+    private fun tintBoxes(shape: VoxelShape, x: Int, y: Int, z: Int, epsilon: Double = 0.002): List<AABB> =
+        shape.toAabbs().map { it.move(x.toDouble(), y.toDouble(), z.toDouble()).inflate(epsilon) }
 
     /** Standable surfaces per column within the mania's vertical reach, keyed by offset index of the current centre. */
     private class SurfaceCache {

@@ -1,13 +1,10 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.tracking
 
-import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
-import com.odtheking.odin.events.MessageEvent
-import com.odtheking.odin.events.core.on
-import com.odtheking.odin.features.Module
-import com.odtheking.odin.utils.modMessage
-import com.odtheking.odin.utils.skyblock.Island
-import com.odtheking.odin.utils.skyblock.LocationUtils
-import dev.cd.adrift.utils.Category
+import dev.cd.adrift.events.ChatEvent
+import dev.cd.adrift.features.Category
+import dev.cd.adrift.features.Module
+import dev.cd.adrift.utils.Location
+import dev.cd.adrift.utils.modMessage
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
@@ -15,19 +12,11 @@ import net.minecraft.network.chat.TextColor
 
 object SlayerDrops : Module(
     "Slayer Drops",
-    category = Category.RIFT,
-    description = "Copy and rename valuable slayer drops"
+    Category.TRACKING,
+    "Copies valuable slayer drops to the clipboard and renames the bundle drop."
 ) {
-    private val copyDrops by BooleanSetting(
-        "Copy Drops",
-        default = false,
-        desc = "Copy valuable drops"
-    )
-    private val bundleRename by BooleanSetting(
-        "Rename Bundle",
-        default = false,
-        desc = "Rename bundle drop to 'The One IV Bundle'"
-    )
+    private val copyDrops by bool("Copy Drops", false, "Copies valuable drop messages to the clipboard.")
+    private val bundleRename by bool("Rename Bundle", false, "Renames the bundle drop to 'The One IV Bundle'.")
 
     private const val DROP = "RARE DROP!"
 
@@ -57,8 +46,8 @@ object SlayerDrops : Module(
     }
 
     init {
-        on<MessageEvent.Chat> {
-            if (LocationUtils.currentArea != Island.Rift) return@on
+        on<ChatEvent> {
+            if (!Location.inRift) return@on
             if (!bundleRename && !copyDrops) return@on
 
             val pieces = component.toFlatList(Style.EMPTY)

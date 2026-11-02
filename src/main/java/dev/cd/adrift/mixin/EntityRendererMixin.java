@@ -1,6 +1,6 @@
 package dev.cd.adrift.mixin;
 
-import dev.cd.adrift.features.impl.rift.BossHighlight;
+import dev.cd.adrift.features.boss.BossHighlight;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.world.entity.Entity;

@@ -1,0 +1,92 @@
+package dev.cd.adrift.features
+
+import dev.cd.adrift.config.Config
+import dev.cd.adrift.events.Event
+import dev.cd.adrift.events.EventBus
+import dev.cd.adrift.events.PacketEvent
+import dev.cd.adrift.hud.HudCanvas
+import dev.cd.adrift.hud.HudManager
+import dev.cd.adrift.hud.TextHud
+import dev.cd.adrift.utils.Color
+import net.minecraft.client.Minecraft
+
+/** Config tabs, in the order they're shown. */
+enum class Category(val title: String) {
+    BOSS("Boss"),
+    PARTY("Party"),
+    TRACKING("Tracking");
+
+    val config: Config.Category = Config.category(title)
+}
+
+/**
+ * A feature with its own config section: an Enabled switch, then its options, which fold away while it's off.
+ * Option keys are `<module>.<option>` in camel case, so renaming a label resets it.
+ */
+abstract class Module(val name: String, category: Category, val description: String, enabledByDefault: Boolean = false) {
+    protected val mc: Minecraft get() = Minecraft.getInstance()
+
+    val key = camel(name)
+    val section = category.config.section(name)
+
+    private val enabledOption: Config.BoolOption = section.bool("$key.enabled", "Enabled", description, enabledByDefault)
+        .also { option -> option.onChange { if (option()) onEnable() else onDisable() } }
+
+    val enabled: Boolean get() = enabledOption()
+
+    open fun onEnable() {}
+
+    open fun onDisable() {}
+
+    private fun key(label: String) = "$key.${camel(label)}"
+
+    protected fun bool(label: String, default: Boolean, desc: String) =
+        section.bool(key(label), label, desc, default, enabledOption)
+
+    protected fun int(label: String, default: Int, range: IntRange, step: Int = 1, desc: String, unit: String = "") =
+        section.int(key(label), label, desc, default, range.first, range.last, step, unit, enabledOption)
+
+    protected fun double(label: String, default: Double, range: ClosedFloatingPointRange<Double>, step: Double, desc: String, unit: String = "") =
+        section.double(key(label), label, desc, default, range.start, range.endInclusive, step, unit, enabledOption)
+
+    protected inline fun <reified E : Enum<E>> choice(label: String, default: E, desc: String, noinline name: (E) -> String = { it.toString() }) =
+        choice(label, default, enumValues<E>().toList(), desc, name)
+
+    protected fun <E : Enum<E>> choice(label: String, default: E, entries: List<E>, desc: String, name: (E) -> String) =
+        section.choice(key(label), label, desc, default, entries, enabledOption, name)
+
+    protected fun color(label: String, default: Color, desc: String, allowAlpha: Boolean = true) =
+        section.color(key(label), label, desc, default, allowAlpha, enabledOption)
+
+    protected fun button(label: String, text: String, desc: String, onClick: () -> Unit) =
+        section.button(key(label), label, desc, text, enabledOption, onClick)
+
+    /**
+     * A movable HUD element with a switch to show it. [content] draws into the canvas and returns its size, (0, 0)
+     * to hide; with `preview` it draws example content for the HUD editor.
+     */
+    protected fun hud(
+        label: String, desc: String, x: Float, y: Float, default: Boolean = true,
+        content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
+    ): Config.BoolOption {
+        val shown = bool(label, default, desc)
+        HudManager.add(TextHud(label, Config.hudLayout(key(label), x, y), { enabled && shown() }, content))
+        return shown
+    }
+
+    /** Only runs while the module is enabled. */
+    protected inline fun <reified T : Event> on(noinline handler: T.() -> Unit) =
+        EventBus.register(T::class.java) { if (enabled) it.handler() }
+
+    /** Packets of type [P], only while the module is enabled. */
+    protected inline fun <reified P> onReceive(noinline handler: P.(PacketEvent.Receive) -> Unit) =
+        EventBus.register(PacketEvent.Receive::class.java) { event -> if (enabled) (event.packet as? P)?.handler(event) }
+
+    private companion object {
+        /** "Low Health Warning" -> "lowHealthWarning", "Mania #1" -> "mania1" */
+        fun camel(label: String): String {
+            val words = label.split(Regex("[^A-Za-z0-9]+")).filter { it.isNotEmpty() }
+            return words.mapIndexed { i, w -> if (i == 0) w.lowercase() else w.lowercase().replaceFirstChar(Char::uppercase) }.joinToString("")
+        }
+    }
+}

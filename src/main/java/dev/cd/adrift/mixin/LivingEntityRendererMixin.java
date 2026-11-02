@@ -1,7 +1,7 @@
 package dev.cd.adrift.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.cd.adrift.features.impl.rift.BossHighlight;
+import dev.cd.adrift.features.boss.BossHighlight;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.Model;

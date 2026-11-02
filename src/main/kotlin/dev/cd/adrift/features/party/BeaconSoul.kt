@@ -1,12 +1,10 @@
-package dev.cd.adrift.features.impl.rift
+package dev.cd.adrift.features.party
 
-import com.odtheking.odin.clickgui.settings.impl.NumberSetting
-import com.odtheking.odin.features.Module
-import com.odtheking.odin.utils.handlers.schedule
-import com.odtheking.odin.utils.sendCommand
-import com.odtheking.odin.utils.skyblock.Island
-import com.odtheking.odin.utils.skyblock.LocationUtils
-import dev.cd.adrift.utils.Category
+import dev.cd.adrift.features.Category
+import dev.cd.adrift.features.Module
+import dev.cd.adrift.utils.Location
+import dev.cd.adrift.utils.schedule
+import dev.cd.adrift.utils.sendCommand
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.fabricmc.fabric.api.client.screen.v1.Screens
 import net.minecraft.client.gui.components.Button
@@ -18,30 +16,19 @@ import net.minecraft.world.item.Items
 
 object BeaconSoul : Module(
     "Beacon Soul Helper",
-    category = Category.RIFT,
-    description = "2 player beacon soul helper (requires party, keep GUI open until 8/8)"
+    Category.PARTY,
+    "2 player beacon soul helper: adds a button that sends the grid to party chat (keep the menu open until 8/8)."
 ) {
     private const val BEACON_GUI_NAME = "2 Players Soul ➜ Beacon"
 
-    private val waitTicks by NumberSetting(
-        "Delay ticks",
-        default = 10,
-        //? if >=26.2 {
-        range = 5..40,
-        //?} else {
-        /*min = 5,
-        max = 40,
-        *///?}
-        increment = 1,
-        desc = "Ticks between sending messages (1s = 20t)"
-    )
+    private val waitTicks by int("Delay", 10, 5..40, 1, "Ticks between messages (20 ticks = 1 second).", " ticks")
     // todo: modes (grid or coords)
 
     private var sending = false
 
     init {
         ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
-            if (!enabled || LocationUtils.currentArea != Island.Rift) return@register
+            if (!enabled || !Location.inRift) return@register
             if (screen !is AbstractContainerScreen<*>) return@register
 
             val name = screen.title.string

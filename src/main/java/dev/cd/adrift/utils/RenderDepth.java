@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 //?} else {
 /*import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import dev.cd.adrift.features.impl.rift.BossHighlight;
+import dev.cd.adrift.features.boss.BossHighlight;
 import dev.cd.adrift.mixin.LevelRendererMixin;
 import net.minecraft.client.Minecraft;
 *///?}
