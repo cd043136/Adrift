@@ -828,11 +828,11 @@ class ConfigScreen : CascadeScreen("Adrift") {
     private inner class ChoiceRow<E : Enum<E>>(option: Config.ChoiceOption<E>) : Row<Config.ChoiceOption<E>>(option) {
         private val font = Montserrat.BOLD.tracked(0.08f)
 
-        private inner class Segment(val entry: E, val x: Float, val w: Float) {
+        private inner class Segment(val entry: E, val left: Float, val w: Float) {
             val caption = label(option.name(entry).uppercase(), font, 11f, 0).apply { position = CenterPositionConstraint() }
             val fill = roundedRectangle {
-                position = FixedPositionConstraint(x, 0f)
-                size = FixedSizeConstraint(w, SEGMENT_H)
+                position = FixedPositionConstraint(left, 0f)
+                size = FixedSizeConstraint(this@Segment.w, SEGMENT_H)
                 radius = CascadeGeometricRadius(5f)
                 interact = false
                 adopt(caption)
@@ -884,7 +884,7 @@ class ConfigScreen : CascadeScreen("Adrift") {
 
         private fun segmentAt(x: Float, y: Float): Segment? {
             if (y < bar.y || y > bar.y + SEGMENT_H) return null
-            return segments.firstOrNull { x >= bar.x + it.x && x <= bar.x + it.x + it.w }
+            return segments.firstOrNull { x >= bar.x + it.left && x <= bar.x + it.left + it.w }
         }
 
         override fun paintControl(alpha: Float) {
