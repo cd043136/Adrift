@@ -22,9 +22,9 @@ enum class Category(val title: String) {
 
 /**
  * A feature with its own config section called [name]. With a [toggle], the section opens with a switch of that
- * name and its options fold away while it's off; without one, the module's own switches turn its parts on and off,
- * and it overrides [enabled] to say whether any of them are. Option keys are `<category>.<section>.<option>` in
- * camel case, so renaming a label resets it.
+ * name and its options fold away while it's off. Every feature has one, so it can be switched off as a whole; only
+ * settings that are always in effect (like [dev.cd.adrift.config.gui.Menu]) go without. Option keys are
+ * `<category>.<section>.<option>` in camel case, so renaming a label resets it.
  */
 abstract class Module(
     val name: String, category: Category, val description: String, toggle: String? = null, enabledByDefault: Boolean = false,
@@ -75,16 +75,26 @@ abstract class Module(
         section.button(key(label), label, desc, text, main, onClick)
 
     /**
-     * A movable HUD element with a switch to show it, called [title] in the HUD editor. [content] draws into the
-     * canvas and returns its size, (0, 0) to hide; with `preview` it draws example content for the HUD editor.
+     * A movable HUD element with a switch called [label] to show it, or with a null [label] shown whenever the module
+     * is on, called [title] in the HUD editor. Its placement is saved under [layout]. [content] draws into the canvas
+     * and returns its size, (0, 0) to hide; with `preview` it draws example content for the HUD editor.
      */
     protected fun hud(
-        label: String, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name, scale: Float = 1f,
-        parent: Config.BoolOption? = main, content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
+        label: String?, desc: String, x: Float, y: Float, default: Boolean = true, title: String = name, scale: Float = 1f,
+        parent: Config.BoolOption? = main, layout: String = label ?: name,
+        content: HudCanvas.(preview: Boolean) -> Pair<Int, Int>,
     ): Config.BoolOption {
-        val shown = bool(label, default, desc, parent)
-        HudManager.add(TextHud(title, Config.hudLayout(key(label), x, y, scale), { enabled && shown() }, content))
+        val shown = label?.let { bool(it, default, desc, parent) } ?: checkNotNull(main) { "$name: a HUD without a switch needs a toggle" }
+        HudManager.add(TextHud(title, Config.hudLayout(key(layout), x, y, scale), { enabled && shown() }, content))
         return shown
+    }
+
+    /**
+     * For a [toggle] added to a module that used to go by its parts alone: an existing config without it loads it
+     * on when [anyOn] (read after loading) says one of them was.
+     */
+    protected fun upgradedFrom(anyOn: () -> Boolean) {
+        checkNotNull(main) { "$name: upgradedFrom needs a toggle" }.fallback = anyOn
     }
 
     /** Only runs while the module is [enabled]. */

@@ -20,7 +20,8 @@ import net.minecraft.resources.Identifier
 object LowHealthWarning : Module(
     "Low Health Warning",
     Category.BOSS,
-    "Warns you when your health is critically low during a boss fight."
+    "Warns you when your health is critically low during a boss fight.",
+    toggle = "Low Health Warning",
 ) {
     private enum class SoundMode(private val label: String) {
         NONE("None"), ONCE("Once"), REPEAT("Repeat");
@@ -32,7 +33,13 @@ object LowHealthWarning : Module(
     private val vignetteCol by color("Vignette Colour", Color("ffff0000"), "Hue at the screen edges.", allowAlpha = false, parent = vignette)
     private val playSound by choice("Sound", SoundMode.NONE, "Plays a pling while your health is low.")
 
-    override val enabled get() = vignette() || playSound != SoundMode.NONE
+    private val anyOn get() = vignette() || playSound != SoundMode.NONE
+
+    override val enabled get() = super.enabled && anyOn
+
+    init {
+        upgradedFrom { anyOn }
+    }
 
     private const val HP_THRESHOLD = 6f
     private const val INTERVAL = 4 // for repeating plings

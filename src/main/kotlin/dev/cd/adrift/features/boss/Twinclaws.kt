@@ -14,7 +14,8 @@ import net.minecraft.sounds.SoundEvents
 object Twinclaws : Module(
     "Twinclaws",
     Category.BOSS,
-    "Louder Twinclaws countdown and an on-screen alert when Twinclaws starts."
+    "Louder Twinclaws countdown and an on-screen alert when Twinclaws starts.",
+    toggle = "Twinclaws",
 ) {
     private val twinclawsTimerRegex = Regex("""TWINCLAWS (\d+(?:\.\d+)?)s""")
 
@@ -45,7 +46,13 @@ object Twinclaws : Module(
     }
     private val alertDelay by int("Alert Delay", 0, 0..1000, 10, "Delay before the alert.", "ms", parent = alert)
 
-    override val enabled get() = fixSound() || alert()
+    private val anyOn get() = fixSound() || alert()
+
+    override val enabled get() = super.enabled && anyOn
+
+    init {
+        upgradedFrom { anyOn }
+    }
 
     private val PLING = SoundEvents.NOTE_BLOCK_PLING.value().location()
 

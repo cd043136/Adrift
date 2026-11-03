@@ -13,12 +13,19 @@ import net.minecraft.network.chat.TextColor
 object SlayerDrops : Module(
     "Drops",
     Category.TRACKING,
-    "Copies valuable slayer drops to the clipboard and renames the bundle drop."
+    "Copies valuable slayer drops to the clipboard and renames the bundle drop.",
+    toggle = "Drops",
 ) {
     private val copyDrops by bool("Copy Drops", false, "Copies valuable drop messages to the clipboard.")
     private val bundleRename by bool("Rename Bundle", false, "Renames the bundle drop to 'The One IV Bundle'.")
 
-    override val enabled get() = copyDrops || bundleRename
+    private val anyOn get() = copyDrops || bundleRename
+
+    override val enabled get() = super.enabled && anyOn
+
+    init {
+        upgradedFrom { anyOn }
+    }
 
     private const val DROP = "RARE DROP!"
 

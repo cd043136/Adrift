@@ -11,7 +11,8 @@ import dev.cd.adrift.utils.sendCommand
 object PartyAnnounce : Module(
     "Announce",
     Category.PARTY,
-    "Sends your boss's spawn, mania phases and kill time to party chat."
+    "Sends your boss's spawn, mania phases and kill time to party chat.",
+    toggle = "Announce",
 ) {
     private val spawn by bool("Announce Boss Spawn", false, "Sends your boss's coordinates when it spawns.")
     private val killTime by bool("Kill Time", false, "Sends how long the boss took to kill.")
@@ -20,9 +21,12 @@ object PartyAnnounce : Module(
     private val secondMania by bool("Mania #2", false, "Announces the second mania.", parent = mania)
     private val thirdMania by bool("Mania #3", false, "Announces the third mania (T5).", parent = mania)
 
-    override val enabled get() = spawn || killTime || mania()
+    private val anyOn get() = spawn || killTime || mania()
+
+    override val enabled get() = super.enabled && anyOn
 
     init {
+        upgradedFrom { anyOn }
         on<SlayerEvent.Spawn> {
             if (!spawn || !Location.inRift) return@on
             val pos = boss.blockPosition()

@@ -9,6 +9,9 @@ object BossHud : Module(
     "HUD",
     Category.BOSS,
     "Shows your boss's timer and nametag on screen.",
+    // Same key as the switch hud() used to make, so it keeps its setting
+    toggle = "Boss HUD",
+    enabledByDefault = true,
 ) {
     private const val LINE_HEIGHT = 10
 
@@ -18,7 +21,7 @@ object BossHud : Module(
     )
 
     init {
-        hud("Boss HUD", "Shows the boss's timer and nametag.", 0.5f, 0.3f, title = "Boss HUD") { preview ->
+        hud(null, "Shows the boss's timer and nametag.", 0.5f, 0.3f, title = "Boss HUD", layout = "Boss HUD") { preview ->
             val lines = if (preview) example
             else {
                 val boss = SlayerUtils.boss?.takeIf { it.isAlive } ?: return@hud 0 to 0

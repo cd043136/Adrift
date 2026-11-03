@@ -125,7 +125,13 @@ object Config {
 
     class BoolOption internal constructor(
         key: String, label: String, description: String, section: Section, dependsOn: BoolOption?, default: Boolean,
-    ) : ValueOption<Boolean>(key, label, description, section, dependsOn, default)
+    ) : ValueOption<Boolean>(key, label, description, section, dependsOn, default) {
+        /**
+         * What it loads as when the saved config has no value for it, like a switch added in an update; called once
+         * the rest is loaded, so it can go by the options already there. Not used for a new config.
+         */
+        var fallback: (() -> Boolean)? = null
+    }
 
     /** A whole number from [min] to [max] in [step]s, shown as a slider with [suffix] after the value. */
     class IntOption internal constructor(
@@ -264,6 +270,10 @@ object Config {
                     is ColorOption -> if (element.isString) Color.fromHexOrNull(element.asString)?.let { option.current = it }
                     is ButtonOption -> {}
                 }
+            }
+            for (option in registered) {
+                if (option !is BoolOption || json.has(option.key)) continue
+                option.fallback?.let { option.current = it() }
             }
             json.get("theme")?.takeIf { it.isJsonObject }?.asJsonObject?.let { theme ->
                 theme.get("accent")?.takeIf { it.isJsonPrimitive }?.asString

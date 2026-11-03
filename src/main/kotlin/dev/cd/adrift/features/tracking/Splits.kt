@@ -15,7 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 object Splits : Module(
     "Splits",
     Category.TRACKING,
-    "Damage and mania phase timers for your boss, with a kill-time personal best."
+    "Damage and mania phase timers for your boss, with a kill-time personal best.",
+    toggle = "Splits",
 ) {
     const val TICK_SECONDS = 0.05
     private const val ROW_HEIGHT = 9
@@ -58,9 +59,12 @@ object Splits : Module(
     private val printSplits by bool("Print Splits", false, "Prints the splits in chat after a kill.")
     private val announcePb by bool("Announce PB", true, "Prints the kill time and your personal best after a kill.")
 
-    override val enabled get() = showHud() || printSplits || announcePb
+    private val anyOn get() = showHud() || printSplits || announcePb
+
+    override val enabled get() = super.enabled && anyOn
 
     init {
+        upgradedFrom { anyOn }
         button("Reset PB", "Reset", "Clears your kill-time personal best.") {
             Config.records.remove(PB_KEY)
             Config.save()
