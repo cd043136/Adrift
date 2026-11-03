@@ -29,12 +29,7 @@ import dev.cd.adrift.utils.Category
 import dev.cd.adrift.utils.RenderUtils.drawFilledQuad
 import dev.cd.adrift.utils.SlayerUtils
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
-import net.minecraft.client.DeltaTracker
-import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.Identifier
 import net.minecraft.util.ARGB
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EquipmentSlot
@@ -70,11 +65,17 @@ object VampireHelper : Module(
         default = false,
         desc = "Send coords when your boss spawns"
     )
-    private val twinclawsAlert by BooleanSetting(
-        "Twinclaws Alert",
-        default = false,
-        desc = "Title when Twinclaws spawn"
-    )
+    private val twinclawsAlertText = Component.literal("§6§lTWINCLAWS!")
+
+    // defaults put it where the old fixed title was on a 1080p screen at gui scale 4
+    private val twinclawsAlert by HUD("Twinclaws Alert", desc = "Alert when Twinclaws spawn", x = 138, y = 99, scale = 3f) { example ->
+        if (!example && twinclawsAlertUntil <= System.currentTimeMillis()) return@HUD 0 to 0
+
+        val width = mc.font.width(twinclawsAlertText)
+        // textWithBackdrop draws its box 2px past the text
+        textWithBackdrop(mc.font, twinclawsAlertText, 2, 2, width, ARGB.white(255))
+        width + 4 to mc.font.lineHeight + 4
+    }
     private val twinclawsDelay by NumberSetting(
         "Delay",
         default = 0,
@@ -87,7 +88,7 @@ object VampireHelper : Module(
         increment = 10,
         desc = "Delay before the alert",
         unit = "ms"
-    ).withDependency { twinclawsAlert }
+    ).withDependency { twinclawsAlert.enabled }
 
     private val bossHudExample = listOf(
         Component.literal("§c02:41 §5§lMANIA §b14.8s §6§lTWINCLAWS §b1.6s"),
@@ -199,12 +200,6 @@ object VampireHelper : Module(
         }
 
         on<TickEvent.Server> { mc.execute { pollTwinclaws() } }
-
-        HudElementRegistry.attachElementAfter(
-            VanillaHudElements.MISC_OVERLAYS,
-            Identifier.fromNamespaceAndPath("adrift", "twinclaws_alert"),
-            ::renderTwinclawsAlert
-        )
     }
 
     private fun onEntityLoad(entity: Entity) {
@@ -226,7 +221,7 @@ object VampireHelper : Module(
     }
 
     private fun pollTwinclaws() {
-        if (!twinclawsAlert) {
+        if (!twinclawsAlert.enabled) {
             resetTwinclawsState()
             return
         }
@@ -264,20 +259,6 @@ object VampireHelper : Module(
 
     private fun fireTwinclawsAlert() {
         twinclawsAlertUntil = System.currentTimeMillis() + TWINCLAWS_ALERT_MS
-    }
-
-    private fun renderTwinclawsAlert(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!enabled || !twinclawsAlert) return
-        if (twinclawsAlertUntil - System.currentTimeMillis() <= 0) return
-
-        val font = mc.font
-        val text = Component.literal("§6§lTWINCLAWS!")
-        val titleWidth = font.width(text)
-        graphics.pose().pushMatrix()
-        graphics.pose().translate(graphics.guiWidth() / 2f, graphics.guiHeight() / 2f)
-        graphics.pose().scale(3f, 3f)
-        graphics.textWithBackdrop(font, text, -titleWidth / 2, -10, titleWidth, ARGB.white(255))
-        graphics.pose().popMatrix()
     }
 
     private fun resetTwinclawsState() {
