@@ -350,6 +350,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             body.size = FixedSizeConstraint(PANEL_W, contentHeight * fold)
             root.size = FixedSizeConstraint(PANEL_W, height)
             rule.visible = contentHeight * fold > 0f
+            // Opaque, so its corners show; all four are rounded once nothing is under it
+            header.radius = if (rule.visible) CascadeGeometricRadius(10f, 10f, 0f, 0f) else CascadeGeometricRadius(10f)
             if (initialized) {
                 // Whatever is under the mouse now gets the hover
                 scene.layout()
@@ -359,7 +361,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
 
         fun paint() {
             root.color = color(Palette.panel)
-            header.color = color(Palette.lerp(0x0AFFFFFF, 0x14FFFFFF, headerHover.value))
+            header.color = color(Palette.lerp(Palette.header, Palette.headerHover, headerHover.value))
             rule.color = color(Palette.rule)
             sign.setText(if (layout.collapsed) "+" else "–")
             sign.color = color(Palette.lerp(Palette.MUTED, Palette.TEXT, headerHover.value))
@@ -836,7 +838,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             caption.setText(text)
             pill.size = FixedSizeConstraint(font.width(text, 11f) + 20f, PILL_H)
             pill.color = color(Palette.lerp(Palette.accent, Palette.accentHi, hover * 0.4f).fade(alpha))
-            caption.color = color(Palette.WHITE.fade(alpha))
+            caption.color = color(Palette.onAccent.fade(alpha))
         }
     }
 

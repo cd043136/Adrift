@@ -35,6 +35,14 @@ object Palette {
         private set
     var panel = 0
         private set
+    /** ClickGUI panel headers: opaque whatever the menu opacity, with a hint of the accent. */
+    var header = 0
+        private set
+    var headerHover = 0
+        private set
+    /** Text on an accent fill: white, or near-black when the accent is too light for white to read. */
+    var onAccent = 0
+        private set
 
     init {
         update()
@@ -51,6 +59,9 @@ object Palette {
         accentHi = mix(accent, WHITE, 0.7f)
         rule = mix(accent, LINE, 0.36f)
         panel = 0x0F0E16.withAlpha(Config.Theme.opacity)
+        header = mix(accent, 0xFF16151F.toInt(), 0.1f)
+        headerHover = mix(accent, 0xFF1F1E2A.toInt(), 0.14f)
+        onAccent = if (lum > 0.6f) 0xFF0F0E16.toInt() else WHITE
     }
 
     fun color(argb: Int) = CascadeGeometricColor(argb)

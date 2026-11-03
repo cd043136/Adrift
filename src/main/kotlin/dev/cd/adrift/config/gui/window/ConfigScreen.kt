@@ -1049,7 +1049,7 @@ class ConfigScreen(tab: Config.Category? = null) : CascadeScreen("Adrift") {
                 val t = segment.hover.value
                 val fill = if (selected) Palette.lerp(Palette.accent, Palette.accentHi, t * 0.4f) else Palette.lerp(0x00FFFFFF, 0x1FFFFFFF, t)
                 segment.fill.color = color(fill.fade(alpha))
-                segment.caption.color = color((if (selected) Palette.WHITE else Palette.lerp(Palette.MUTED, Palette.TEXT, t)).fade(alpha))
+                segment.caption.color = color((if (selected) Palette.onAccent else Palette.lerp(Palette.MUTED, Palette.TEXT, t)).fade(alpha))
             }
         }
     }
