@@ -27,7 +27,6 @@ import foo.starred.cascade.constraints.impl.position.CenterPositionConstraint
 import foo.starred.cascade.constraints.impl.position.FixedPositionConstraint
 import foo.starred.cascade.constraints.impl.size.FillSizeConstraint
 import foo.starred.cascade.constraints.impl.size.FixedSizeConstraint
-import foo.starred.cascade.effects.impl.DropShadowEffect
 import foo.starred.cascade.effects.impl.OutlineEffect
 import foo.starred.cascade.events.impl.FocusEvent
 import foo.starred.cascade.events.impl.KeyEvent
@@ -101,8 +100,6 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         /** Never drawn bigger than this many GUI units per mockup pixel, the window screen's biggest. */
         const val MAX_SCALE = 0.415f
         const val SCRIM = 0x40050A08
-        /** Kept faint: the panels float over the world, so a heavy shadow reads as a grey smudge. */
-        const val SHADOW = 0x29000000
         val FAST = 150.milliseconds
         val FOLD = 200.milliseconds
         val NONE = CascadeGeometricColor.TRANSPARENT
@@ -162,7 +159,6 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             position = AlignPositionConstraint(PositionAlignment.CENTER, PositionAlignment.START)
             offset = CascadeGeometricOffset(0f, MARGIN)
             radius = CascadeGeometricRadius(BAR_H / 2f)
-            effect(DropShadowEffect { offset = CascadeGeometricOffset(0f, 3f); blur = 12f; color = color(SHADOW) })
             effect(OutlineEffect { color = color(Palette.LINE) })
             // Swallows clicks between the controls
             on<MouseEvent.Press> { cancel() }
@@ -237,7 +233,6 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             position = FixedPositionConstraint(this@Panel.x, this@Panel.y)
             size = FixedSizeConstraint(PANEL_W, HEADER_H)
             radius = CascadeGeometricRadius(10f)
-            effect(DropShadowEffect { offset = CascadeGeometricOffset(0f, 3f); blur = 12f; color = color(SHADOW) })
             effect(OutlineEffect { color = color(Palette.LINE) })
         }
         private val header = roundedRectangle {
