@@ -3,7 +3,8 @@
 Rift & vampire slayer features for Hypixel Skyblock. Modrinth link: https://modrinth.com/mod/adrift-sb
 
 Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin. Open the settings with `/adrift`
-(or bind **Open Config** in Controls), and move HUD elements with `/adrift hud`.
+(or bind **Open Config** in Controls), and move HUD elements with `/adrift hud`. The settings open as a window by
+default; switch to a ClickGUI under **General → Menu → Style**.
 
 | Minecraft | Fabric API | Fabric Language Kotlin |
 |-----------|------------|------------------------|

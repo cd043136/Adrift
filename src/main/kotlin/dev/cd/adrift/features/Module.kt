@@ -14,7 +14,8 @@ import net.minecraft.client.Minecraft
 enum class Category(val title: String) {
     BOSS("Boss"),
     PARTY("Party"),
-    TRACKING("Tracking");
+    TRACKING("Tracking"),
+    GENERAL("General");
 
     val config: Config.Category = Config.category(title)
 }

@@ -3,7 +3,7 @@ package dev.cd.adrift
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.brigadier.Command
 import dev.cd.adrift.config.Config
-import dev.cd.adrift.config.gui.window.ConfigScreen
+import dev.cd.adrift.config.gui.Menu
 import dev.cd.adrift.events.EventDispatcher
 import dev.cd.adrift.features.Category
 import dev.cd.adrift.features.boss.BossHighlight
@@ -60,11 +60,12 @@ object Adrift : ClientModInitializer {
             BossHighlight, IchorHelper, Twinclaws, ManiaHelper, LowHealthWarning, BossHud,
             PartyAnnounce, BeaconSoul,
             Splits, SlayerDrops,
+            Menu,
         )
         Config.load()
 
         ClientTickEvents.END_CLIENT_TICK.register { _ ->
-            while (openConfigKey.consumeClick()) ConfigScreen().open()
+            while (openConfigKey.consumeClick()) Menu.open()
             Config.tick()
         }
         ClientLifecycleEvents.CLIENT_STOPPING.register { _ -> Config.tick(force = true) }
@@ -76,7 +77,7 @@ object Adrift : ClientModInitializer {
                 ClientCommands.literal(MOD_ID)
                     .executes { _ ->
                         // open() defers to the next tick, so the closing chat screen doesn't replace ours
-                        ConfigScreen().open()
+                        Menu.open()
                         Command.SINGLE_SUCCESS
                     }
                     .then(ClientCommands.literal("hud").executes { _ ->

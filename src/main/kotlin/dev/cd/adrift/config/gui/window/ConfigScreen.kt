@@ -56,14 +56,14 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Config popup opened by `/adrift` or the Open Config key (from personalmod's config screen): [Config] categories
- * are tabs, sections are headed lists of rows. Hovering a row highlights it and shows its description at the
+ * Config popup opened by `/adrift` or the Open Config key (from personalmod's config screen), on [tab] or the one it
+ * was left on: [Config] categories are tabs, sections are headed lists of rows. Hovering a row highlights it and shows its description at the
  * bottom; options that aren't [Config.Option.shown] fold away. The bucket picks the accent colour and how opaque
  * the menu is; colour rows open the same picker for their colour. The world stays visible and blurred behind it.
  *
  * Every size is in the mockup's CSS pixels; [init] scales the whole scene to fit the window.
  */
-class ConfigScreen : CascadeScreen("Adrift") {
+class ConfigScreen(tab: Config.Category? = null) : CascadeScreen("Adrift") {
     private companion object {
         const val PANEL_W = 820f
         const val PANEL_H = 585f
@@ -126,7 +126,8 @@ class ConfigScreen : CascadeScreen("Adrift") {
         fun color(argb: Int) = CascadeGeometricColor(argb)
     }
 
-    private var category = Config.categories[lastCategory.coerceIn(Config.categories.indices)]
+    private var category = (tab ?: Config.categories[lastCategory.coerceIn(Config.categories.indices)])
+        .also { lastCategory = Config.categories.indexOf(it) }
     private var initialized = false
     /** Set while something is dragged; gets the mouse position in scene coordinates. Cascade has no drag event. */
     private var drag: ((Float, Float) -> Unit)? = null
