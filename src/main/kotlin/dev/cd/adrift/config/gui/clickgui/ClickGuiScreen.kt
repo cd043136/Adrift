@@ -319,7 +319,10 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
                 }
             }
             items.forEach { body.adopt(it.box) }
-            for (item in items) item.reveal = if (item.wanted) 1f else 0f
+            for (item in items) {
+                item.revealTarget = if (item.wanted) 1f else 0f
+                item.reveal = item.revealTarget
+            }
             painters += ::paint
         }
 
@@ -377,7 +380,10 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
     private fun refreshShown() {
         for (panel in panels) for (item in panel.items) {
             val target = if (item.wanted) 1f else 0f
-            if (item.reveal != target) item.box.animate(item::reveal, target, FOLD, easing = EaseOutEasingInterpolator)
+            // Against where it's headed, not where it is: one still unfolding (and at 0) must turn back
+            if (item.revealTarget == target) continue
+            item.revealTarget = target
+            item.box.animate(item::reveal, target, FOLD, easing = EaseOutEasingInterpolator)
         }
     }
 
@@ -576,6 +582,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
                 panel.relayout()
                 paint()
             }
+        /** What [reveal] is animating to. */
+        var revealTarget = 1f
         val hoverFade = Fade { paint() }
         protected val hover get() = hoverFade.value
         abstract val wanted: Boolean
