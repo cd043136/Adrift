@@ -683,7 +683,9 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         override fun paint() {
             val t = if (main == null) 0f else on.value
             val idle = Palette.lerp(0x00FFFFFF, 0x12FFFFFF, hover)
-            box.color = color(Palette.lerp(idle, Palette.lerp(Palette.accentRow, Palette.accent, hover * 0.25f), t).fade(reveal))
+            val active = Palette.lerp(Palette.accentRow, Palette.accent, hover * 0.25f)
+            // As see-through as the menu opacity, like the rows switched off; the bar still marks it
+            box.color = color(Palette.lerp(idle, active, t * Config.Theme.opacity).fade(reveal))
             bar.color = color(Palette.accent.fade(t * reveal))
             divider.color = color(Palette.LINE.fade(reveal))
             val base = if (main == null) Palette.lerp(Palette.TEXT, Palette.WHITE, hover) else Palette.lerp(Palette.MUTED, Palette.TEXT, hover)
