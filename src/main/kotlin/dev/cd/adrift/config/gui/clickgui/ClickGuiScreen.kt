@@ -61,7 +61,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * folds it), and each section is a module in it. Left-clicking a module flips its main switch, or opens it when it
  * has none; right-clicking opens its options underneath, which can be changed while the switch is off. Scrolling
  * over a panel moves it up and down, and anywhere else moves them all. Hovering shows the description at the
- * bottom, above the search field, Edit HUD and the theme bucket. Panels are saved as [Config.PanelLayout]s.
+ * bottom. A bar floating at the top holds the search field, Edit HUD and the theme bucket, which sets the same
+ * colours as the window screen's. Panels are saved as [Config.PanelLayout]s.
  *
  * Sizes are in the same mockup pixels as the window screen; [init] picks how big to draw them.
  */
@@ -87,6 +88,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         const val SWATCH_H = 18f
         const val PILL_H = 22f
         const val TOOLBAR_H = 38f
+        const val BAR_PAD = 8f
+        const val BAR_H = TOOLBAR_H + BAR_PAD * 2
         const val SEARCH_W = 260f
         const val GAP = 12f
         const val ICON = 22f
@@ -148,24 +151,36 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
 
         description = label(" ", Montserrat.MEDIUM, 13f, Palette.DESCRIPTION).apply {
             position = AlignPositionConstraint(PositionAlignment.CENTER, PositionAlignment.END)
-            offset = CascadeGeometricOffset(0f, -(MARGIN + TOOLBAR_H + 14f))
+            offset = CascadeGeometricOffset(0f, -MARGIN)
             shadow = true
             attach(scene)
         }
 
         toolbar = roundedRectangle {
-            position = AlignPositionConstraint(PositionAlignment.CENTER, PositionAlignment.END)
-            offset = CascadeGeometricOffset(0f, -MARGIN)
-            color = NONE
-            interact = false
+            position = AlignPositionConstraint(PositionAlignment.CENTER, PositionAlignment.START)
+            offset = CascadeGeometricOffset(0f, MARGIN)
+            radius = CascadeGeometricRadius(BAR_H / 2f)
+            effect(DropShadowEffect { offset = CascadeGeometricOffset(0f, 10f); blur = 30f; color = color(0x80000000.toInt()) })
+            effect(OutlineEffect { color = color(Palette.LINE) })
+            // Swallows clicks between the controls
+            on<MouseEvent.Press> { cancel() }
             attach(scene)
         }
-        toolbar.adopt(searchField(0f))
-        val hud = hudButton(SEARCH_W + GAP)
+        painters += { toolbar.color = color(Palette.panel) }
+        val titleFont = Montserrat.EXTRABOLD.tracked(0.16f)
+        toolbar.adopt(label("ADRIFT", titleFont, 15f, Palette.TEXT).apply {
+            position = AlignPositionConstraint(PositionAlignment.START, PositionAlignment.CENTER)
+            offset = CascadeGeometricOffset(BAR_PAD + 14f, 0f)
+        })
+        var barX = BAR_PAD + 14f + titleFont.width("ADRIFT", 15f) + GAP
+        toolbar.adopt(searchField(barX))
+        barX += SEARCH_W + GAP
+        val hud = hudButton(barX)
         toolbar.adopt(hud)
-        val hudW = (hud.size as FixedSizeConstraint).width
-        toolbar.adopt(themeButton(SEARCH_W + GAP + hudW + GAP))
-        toolbar.size = FixedSizeConstraint(SEARCH_W + GAP + hudW + GAP + TOOLBAR_H, TOOLBAR_H)
+        barX += (hud.size as FixedSizeConstraint).width + GAP
+        toolbar.adopt(themeButton(barX))
+        barX += TOOLBAR_H + BAR_PAD
+        toolbar.size = FixedSizeConstraint(barX, BAR_H)
 
         repaint()
     }
@@ -204,7 +219,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
     private inner class Panel(val category: Config.Category, index: Int) {
         val layout = Config.panel(category.name)
         var x = layout.x ?: (MARGIN + index * (PANEL_W + PANEL_GAP))
-        var y = layout.y ?: MARGIN
+        var y = layout.y ?: (MARGIN + BAR_H + PANEL_GAP)
         val items = mutableListOf<Item>()
         private var contentHeight = 0f
         val height get() = HEADER_H + contentHeight * fold
@@ -377,7 +392,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
 
     /** Typing filters the panels; Escape clears it, then lets go of it. */
     private fun searchField(x: Float) = roundedRectangle {
-        position = FixedPositionConstraint(x, 0f)
+        position = FixedPositionConstraint(x, BAR_PAD)
         size = FixedSizeConstraint(SEARCH_W, TOOLBAR_H)
         radius = CascadeGeometricRadius(TOOLBAR_H / 2f)
         cursor = CursorTypes.IBEAM
@@ -394,7 +409,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         searchField = this
         val field = this
         painters += {
-            field.color = color(if (searchFocused) 0xCC000000.toInt() else 0x99000000.toInt())
+            field.color = color(if (searchFocused) 0x80000000.toInt() else 0x59000000)
             outline.color = color(if (searchFocused) Palette.accent else 0x38FFFFFF)
             searchIcon.color = color(Palette.TEXT)
             text.setText(if (query.isEmpty()) "Search options" else if (searchFocused) "$query|" else query)
@@ -433,7 +448,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         val font = Montserrat.BOLD.tracked(0.14f)
         val text = "EDIT HUD"
         val w = font.width(text, 12f) + 32f + 2f
-        position = FixedPositionConstraint(x, 0f)
+        position = FixedPositionConstraint(x, BAR_PAD)
         size = FixedSizeConstraint(w, TOOLBAR_H)
         radius = CascadeGeometricRadius(TOOLBAR_H / 2f)
         cursor = CursorTypes.POINTING_HAND
@@ -442,7 +457,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         adopt(caption)
 
         val hover = Fade { t ->
-            button.color = color(Palette.lerp(0x99000000.toInt(), 0xCC1A1A1A.toInt(), t))
+            button.color = color(Palette.lerp(0x0FFFFFFF, 0x24FFFFFF, t))
             outline.color = color(Palette.lerp(0x38FFFFFF, Palette.WHITE, t))
             caption.color = color(Palette.TEXT)
         }
@@ -458,7 +473,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
     /** Picks the accent colour and how opaque the panels are. */
     private fun themeButton(x: Float) = roundedRectangle {
         val button = this
-        position = FixedPositionConstraint(x, 0f)
+        position = FixedPositionConstraint(x, BAR_PAD)
         size = FixedSizeConstraint(TOOLBAR_H, TOOLBAR_H)
         radius = CascadeGeometricRadius(TOOLBAR_H / 2f)
         cursor = CursorTypes.POINTING_HAND
@@ -473,7 +488,7 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         themeButton = this
 
         val hover = Fade { t ->
-            button.color = color(Palette.lerp(0x99000000.toInt(), 0xCC1A1A1A.toInt(), t))
+            button.color = color(Palette.lerp(0x0FFFFFFF, 0x24FFFFFF, t))
             outline.color = color(Palette.lerp(0x38FFFFFF, Palette.WHITE, t))
             bucket.color = color(Palette.TEXT)
             bucketWater.color = CascadeGeometricColor.vertical(Palette.lerp(Palette.accentHi, Palette.accent, t), Palette.accentDeep)
@@ -489,8 +504,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
                 Palette.update()
                 repaint()
             }
-            // Above the bucket, right-aligned with it
-            openPicker(picker, themeButton.x + TOOLBAR_H - ColorPicker.WIDTH, toolbar.y - picker.popupHeight - 8f)
+            // Under the bar, right-aligned with the bucket
+            openPicker(picker, themeButton.x + TOOLBAR_H - ColorPicker.WIDTH, toolbar.y + BAR_H + 8f)
         }
     }
 
