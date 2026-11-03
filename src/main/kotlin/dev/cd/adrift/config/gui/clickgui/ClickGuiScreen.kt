@@ -688,7 +688,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             box.color = color(Palette.lerp(idle, active, t * Config.Theme.opacity).fade(reveal))
             bar.color = color(Palette.accent.fade(t * reveal))
             divider.color = color(Palette.LINE.fade(reveal))
-            val base = if (main == null) Palette.lerp(Palette.TEXT, Palette.WHITE, hover) else Palette.lerp(Palette.MUTED, Palette.TEXT, hover)
+            // White whether or not it's switched on; the accent fill and bar tell those apart
+            val base = Palette.lerp(Palette.TEXT, Palette.WHITE, hover)
             name.color = color(Palette.lerp(base, Palette.WHITE, t).fade(reveal))
             sign.visible = options.isNotEmpty()
             sign.setText(if (open) "–" else "+")
