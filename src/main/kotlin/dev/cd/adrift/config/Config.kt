@@ -20,16 +20,17 @@ import kotlin.reflect.KProperty
  *
  * An option is shown while its [Option.dependsOn] switch (and anything that depends on in turn) is on and its
  * [Option.condition] holds, and is indented under that switch. HUD placements are [HudLayout]s saved under `"hud"`, personal bests are [records]
- * saved under `"records"`, and the config screen's colours are the [Theme], saved under `"theme"`.
+ * saved under `"records"`, the config screen's colours are the [Theme], saved under `"theme"`, and where the ClickGUI's
+ * panels sit are [PanelLayout]s saved under `"clickGui"`.
  */
 object Config {
     class Category internal constructor(val name: String) {
         val sections = mutableListOf<Section>()
 
-        fun section(name: String) = Section(this, name).also(sections::add)
+        fun section(name: String, description: String = "") = Section(this, name, description).also(sections::add)
     }
 
-    class Section internal constructor(val category: Category, val name: String) {
+    class Section internal constructor(val category: Category, val name: String, val description: String) {
         val options = mutableListOf<Option>()
 
         /** The switch the whole section hangs off, if it has one; options under it aren't indented. */
@@ -218,6 +219,16 @@ object Config {
         }
     }
 
+    /**
+     * Where a ClickGUI panel sits ([x] and [y] of its top-left corner, in the screen's own units; null until it's
+     * moved) and whether it's folded up. Call [save] after changing it.
+     */
+    class PanelLayout internal constructor() {
+        var x: Float? = null
+        var y: Float? = null
+        var collapsed = false
+    }
+
     private val path = FabricLoader.getInstance().configDir.resolve("${Adrift.MOD_ID}.json")
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val registered = mutableListOf<Option>()
@@ -226,6 +237,11 @@ object Config {
 
     /** Named numbers kept between sessions, like personal bests. Call [save] after changing them. */
     val records = linkedMapOf<String, Float>()
+
+    private val panels = linkedMapOf<String, PanelLayout>()
+
+    /** The ClickGUI panel called [name]. */
+    fun panel(name: String) = panels.getOrPut(name, ::PanelLayout)
 
     fun category(name: String) = categories.firstOrNull { it.name == name } ?: Category(name).also(categories::add)
 
@@ -262,6 +278,14 @@ object Config {
                 number("y")?.let { layout.y = it.coerceIn(0f, 1f) }
                 number("scale")?.let { layout.scale = it }
             }
+            json.get("clickGui")?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()?.forEach { (name, value) ->
+                val saved = value.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+                fun number(key: String) = saved.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asFloat
+                val panel = panel(name)
+                panel.x = number("x")
+                panel.y = number("y")
+                panel.collapsed = saved.get("collapsed")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean ?: false
+            }
             json.get("records")?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()?.forEach { (key, value) ->
                 if (value.isJsonPrimitive && value.asJsonPrimitive.isNumber) records[key] = value.asFloat
             }
@@ -275,7 +299,7 @@ object Config {
     @Volatile private var dirtySince = 0L
 
     /**
-     * Options save themselves; call this after changing a [HudLayout], [records] or the [Theme]. Writes are
+     * Options save themselves; call this after changing a [HudLayout], a [PanelLayout], [records] or the [Theme]. Writes are
      * batched: dragging a slider changes it every frame, so the file is written once things settle (see [tick]).
      */
     fun save() {
@@ -316,6 +340,15 @@ object Config {
                     addProperty("x", layout.x)
                     addProperty("y", layout.y)
                     addProperty("scale", layout.scale)
+                })
+            }
+        })
+        json.add("clickGui", JsonObject().apply {
+            for ((name, panel) in panels) {
+                add(name, JsonObject().apply {
+                    panel.x?.let { addProperty("x", it) }
+                    panel.y?.let { addProperty("y", it) }
+                    addProperty("collapsed", panel.collapsed)
                 })
             }
         })

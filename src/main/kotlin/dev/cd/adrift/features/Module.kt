@@ -31,7 +31,7 @@ abstract class Module(
     protected val mc: Minecraft get() = Minecraft.getInstance()
 
     val key = "${camel(category.title)}.${camel(name)}"
-    val section = category.config.section(name)
+    val section = category.config.section(name, description)
 
     /** The section's main switch, from [toggle]; options hang off it unless given another parent. */
     protected val main: Config.BoolOption? = toggle?.let { label ->

@@ -8,7 +8,10 @@ import dev.cd.adrift.config.gui.ColorPicker
 import dev.cd.adrift.config.gui.Montserrat
 import dev.cd.adrift.config.gui.Palette
 import dev.cd.adrift.config.gui.Palette.fade
+import dev.cd.adrift.config.gui.SliderModel
 import dev.cd.adrift.config.gui.checker
+import dev.cd.adrift.config.gui.doubleSlider
+import dev.cd.adrift.config.gui.intSlider
 import dev.cd.adrift.config.gui.label
 import dev.cd.adrift.config.gui.onLeftClick
 import dev.cd.adrift.config.gui.setText
@@ -49,7 +52,6 @@ import net.minecraft.sounds.SoundEvents
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -862,30 +864,6 @@ class ConfigScreen : CascadeScreen("Adrift") {
             knob.position = FixedPositionConstraint(3f + (SWITCH_W - KNOB - 6f) * on.value, 3f)
             knob.color = color(Palette.WHITE.fade(alpha))
         }
-    }
-
-    /** A slider's value as a fraction of its range, and how it reads. */
-    private interface SliderModel {
-        var fraction: Float
-        val text: String
-    }
-
-    private fun intSlider(option: Config.IntOption) = object : SliderModel {
-        override var fraction: Float
-            get() = (option() - option.min).toFloat() / (option.max - option.min)
-            set(value) {
-                option.value = option.min + (value * (option.max - option.min)).roundToInt()
-            }
-        override val text get() = "${option()}${option.suffix}"
-    }
-
-    private fun doubleSlider(option: Config.DoubleOption) = object : SliderModel {
-        override var fraction: Float
-            get() = ((option() - option.min) / (option.max - option.min)).toFloat()
-            set(value) {
-                option.value = option.min + value * (option.max - option.min)
-            }
-        override val text get() = "${option.format()}${option.suffix}"
     }
 
     /** Pressing anywhere along the track (or a little either side) grabs the thumb. */
