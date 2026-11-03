@@ -3,7 +3,7 @@ package dev.cd.adrift
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.brigadier.Command
 import dev.cd.adrift.config.Config
-import dev.cd.adrift.config.gui.ConfigScreen
+import dev.cd.adrift.config.gui.window.ConfigScreen
 import dev.cd.adrift.events.EventDispatcher
 import dev.cd.adrift.features.Category
 import dev.cd.adrift.features.boss.BossHighlight

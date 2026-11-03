@@ -2,7 +2,7 @@ package dev.cd.adrift.hud
 
 import com.mojang.blaze3d.platform.InputConstants
 import dev.cd.adrift.config.Config
-import dev.cd.adrift.config.gui.ConfigScreen
+import dev.cd.adrift.config.gui.window.ConfigScreen
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen

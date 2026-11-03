@@ -1,10 +1,19 @@
-package dev.cd.adrift.config.gui
+package dev.cd.adrift.config.gui.window
 
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.platform.cursor.CursorTypes
 import dev.cd.adrift.Adrift
 import dev.cd.adrift.config.Config
+import dev.cd.adrift.config.gui.ColorPicker
+import dev.cd.adrift.config.gui.Montserrat
+import dev.cd.adrift.config.gui.Palette
 import dev.cd.adrift.config.gui.Palette.fade
+import dev.cd.adrift.config.gui.checker
+import dev.cd.adrift.config.gui.label
+import dev.cd.adrift.config.gui.onLeftClick
+import dev.cd.adrift.config.gui.setText
+import dev.cd.adrift.config.gui.textTop
+import dev.cd.adrift.config.gui.width
 import dev.cd.adrift.hud.HudEditorScreen
 import dev.cd.adrift.utils.Color
 import foo.starred.cascade.animation.extension.impl.animate
