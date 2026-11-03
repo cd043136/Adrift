@@ -29,6 +29,17 @@ fun TextPrimitive.setText(string: String) {
  */
 fun textTop(lineTop: Float, size: Float) = lineTop + 0.11f * size
 
+/**
+ * Call with whether a text field just gained or lost focus. Since 26.3 the window only sends typed characters
+ * while text input is on, which vanilla's EditBox turns on when focused; earlier versions always send them.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun textInput(owner: Any, focused: Boolean) {
+    //? if >=26.3 {
+    Minecraft.getInstance().textInputManager().onTextInputFocusChange(owner, focused)
+    //?}
+}
+
 fun Montserrat.width(string: String, size: Float) = width(Component.literal(string).visualOrderText, size)
 
 fun IPrimitiveElement<*>.onLeftClick(sound: Boolean = true, action: (x: Float, y: Float) -> Unit) {

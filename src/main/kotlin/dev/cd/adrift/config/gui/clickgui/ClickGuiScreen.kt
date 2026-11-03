@@ -15,6 +15,7 @@ import dev.cd.adrift.config.gui.intSlider
 import dev.cd.adrift.config.gui.label
 import dev.cd.adrift.config.gui.onLeftClick
 import dev.cd.adrift.config.gui.setText
+import dev.cd.adrift.config.gui.textInput
 import dev.cd.adrift.config.gui.textTop
 import dev.cd.adrift.config.gui.width
 import dev.cd.adrift.hud.HudEditorScreen
@@ -426,8 +427,8 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
 
         // Pressing focuses it; keys then go to the focused element
         on<MouseEvent.Press> { cancel() }
-        on<FocusEvent.Gain> { searchFocused = true; repaint() }
-        on<FocusEvent.Lose> { searchFocused = false; repaint() }
+        on<FocusEvent.Gain> { searchFocused = true; textInput(field, true); repaint() }
+        on<FocusEvent.Lose> { searchFocused = false; textInput(field, false); repaint() }
         on<KeyEvent.Type> {
             if (char < ' ' || query.length >= MAX_QUERY) return@on
             search(query + char)

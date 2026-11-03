@@ -242,11 +242,12 @@ class ColorPicker(
             hexText.position = AlignPositionConstraint(PositionAlignment.START, PositionAlignment.CENTER)
             hexText.offset = CascadeGeometricOffset(11f, 0f)
             adopt(hexText)
+            val box = this
 
             // Pressing focuses it; keys then go to the focused element
             on<MouseEvent.Press> { cancel() }
-            on<FocusEvent.Gain> { editing = true; paintField() }
-            on<FocusEvent.Lose> { editing = false; hex = format(); paintField() }
+            on<FocusEvent.Gain> { editing = true; textInput(box, true); paintField() }
+            on<FocusEvent.Lose> { editing = false; textInput(box, false); hex = format(); paintField() }
             on<KeyEvent.Type> {
                 val c = char.uppercaseChar()
                 if ((c !in '0'..'9' && c !in 'A'..'F' && c != '#') || hex.length >= MAX_HEX) return@on
