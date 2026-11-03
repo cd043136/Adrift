@@ -75,6 +75,12 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         const val OPTION_H = 32f
         const val SLIDER_ROW_H = 46f
         const val PAD = 16f
+        const val RADIUS = 10f
+        /**
+         * How far past the panel the body clips on every side: Cascade rounds clip rectangles down to whole GUI
+         * pixels, which cut the right edge off opaque rows.
+         */
+        const val CLIP_SLACK = 12f
         /** Left padding of options, so they sit under their module's name. */
         const val OPTION_PAD = 24f
         /** Extra left padding per [Config.Option.depth]. */
@@ -254,10 +260,10 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             size = FixedSizeConstraint(PANEL_W, 2f)
             interact = false
         }
+        /** Only clips the items while folding; the last one rounds its own corners. */
         private val body = scrollable {
-            position = FixedPositionConstraint(0f, HEADER_H)
-            size = FixedSizeConstraint(PANEL_W, 0f)
-            radius = CascadeGeometricRadius(0f, 0f, 10f, 10f)
+            position = FixedPositionConstraint(-CLIP_SLACK, HEADER_H)
+            size = FixedSizeConstraint(PANEL_W + CLIP_SLACK * 2, 0f)
             color = NONE
         }
         private val headerHover = Fade { paint() }
@@ -337,12 +343,15 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
             var top = 0f
             for (item in items) {
                 item.height = item.fullHeight * item.reveal
-                item.box.position = FixedPositionConstraint(0f, top)
+                item.box.position = FixedPositionConstraint(CLIP_SLACK, top)
                 item.box.size = FixedSizeConstraint(PANEL_W, item.height)
                 top += item.height
             }
             contentHeight = top
-            body.size = FixedSizeConstraint(PANEL_W, contentHeight * fold)
+            val last = items.lastOrNull { it.height > 0f }
+            for (item in items) item.fit(item === last)
+            // Slack under the items too once open; while folding it would show the next one
+            body.size = FixedSizeConstraint(PANEL_W + CLIP_SLACK * 2, contentHeight * fold + if (fold == 1f) CLIP_SLACK else 0f)
             root.size = FixedSizeConstraint(PANEL_W, height)
             rule.visible = contentHeight * fold > 0f
             // Opaque, so its corners show; all four are rounded once nothing is under it
@@ -577,6 +586,11 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
         }
 
         abstract fun paint()
+
+        /** Rounds the bottom corners when it's [last] in the panel, to sit inside the panel's own. */
+        open fun fit(last: Boolean) {
+            box.radius = if (last) CascadeGeometricRadius(0f, 0f, RADIUS, RADIUS) else CascadeGeometricRadius.ZERO
+        }
     }
 
     private fun setHovered(item: Item, on: Boolean) {
@@ -649,6 +663,13 @@ class ClickGuiScreen : CascadeScreen("Adrift") {
 
         override val wanted get() = !searching || matches(section, "") || section.options.any { matches(section, it.label) }
         override val description get() = section.description
+
+        override fun fit(last: Boolean) {
+            super.fit(last)
+            // Square, so kept clear of the rounded corner, and no line under the panel's edge
+            bar.size = FixedSizeConstraint(3f, if (last) MODULE_H - RADIUS / 2f else MODULE_H)
+            divider.visible = !last
+        }
 
         override fun paint() {
             val t = if (main == null) 0f else on.value
