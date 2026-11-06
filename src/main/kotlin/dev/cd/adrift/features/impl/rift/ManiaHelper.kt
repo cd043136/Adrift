@@ -64,14 +64,14 @@ object ManiaHelper : Module(
     //? if >=26.2 {
     private val style by SelectorSetting(
         name = "Render style",
-        default = RenderStyle.PLANE,
+        default = RenderStyle.BLOCK_TINT,
         desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
     )
     private val squareSize by NumberSetting("Square size", 0.5, 0.1..1.0, 0.05, desc = "Side length of the plane squares")
     //?} else {
     /*private val styleIndex by SelectorSetting(
         name = "Render style",
-        default = "Plane",
+        default = "Block Tint",
         options = listOf("Plane", "Block Tint"),
         desc = "Plane = 2d square on the block, Block Tint = changes block colour itself"
     )
