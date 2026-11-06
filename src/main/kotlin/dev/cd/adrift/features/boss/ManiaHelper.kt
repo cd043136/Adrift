@@ -51,7 +51,7 @@ object ManiaHelper : Module(
         override fun toString() = label
     }
 
-    private val style by choice("Render Style", RenderStyle.PLANE, "Plane draws a square on each block; Block Tint colours the blocks themselves.")
+    private val style by choice("Render Style", RenderStyle.BLOCK_TINT, "Plane draws a square on each block; Block Tint colours the blocks themselves.")
     private val squareSize by double("Square Size", 0.5, 0.1..1.0, 0.05, "Side length of the plane squares.")
         .showIf { style != RenderStyle.BLOCK_TINT }
     private val renderRadius by int(
