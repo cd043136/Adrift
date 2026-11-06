@@ -16,7 +16,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 // AI made this entire thing
 internal enum class ManiaBlock(val symbol: String) {
@@ -152,12 +154,8 @@ internal class ManiaSession(
     var packetsSeen = 0
         private set
     var maniaRemaining: Double? = null
-        set(value) {
-            if (field == null) startRemaining = value
-            field = value
-        }
-    private var startRemaining: Double? = null
 
+    private val bossBlockY = floor(bossY).toInt()
     private var cycleStartTick = 0L
     private var redstoneTick = 0L
     private var coalTick = 0L
@@ -180,6 +178,7 @@ internal class ManiaSession(
     private var batchStamp = 0
     private val foreignCounts = IntArray(GROUP_NONE + 1)
     private val filtered = ArrayList<ManiaUpdate>()
+    private val inReach = ArrayList<ManiaUpdate>()
 
     /** Debug description of the last terracotta/stage decision, only set while logging. */
     private var lastOutcome = ""
@@ -210,25 +209,28 @@ internal class ManiaSession(
         else -> null
     }
 
-    /** @return false if the batch reverted the pattern and the session should end. */
-    fun processBatch(tick: Long, updates: List<ManiaUpdate>, synthetic: Boolean): Boolean {
-        if (!synthetic) for (u in updates) if (u.type != ManiaBlock.NONE) packetsSeen++
+    fun processBatch(tick: Long, updates: List<ManiaUpdate>, synthetic: Boolean) {
         if (log.enabled) for (u in updates) log.file("B $tick ${u.x} ${u.y} ${u.z} ${u.type.symbol}")
 
-        var batch = updates
+        // A boss on another floor can share our columns; only height tells its pattern from ours.
+        inReach.clear()
+        for (u in updates) if (u.y - bossBlockY in -REACH_BELOW_BOSS..REACH_ABOVE_BOSS) inReach += u
+        if (!synthetic) for (u in inReach) if (u.type != ManiaBlock.NONE) packetsSeen++
+
+        var batch: List<ManiaUpdate> = inReach
         var fitted = false
         if (locked) {
-            countForeign(updates)
+            countForeign(inReach)
             // Locked onto a nearby foreign pattern in the first window, our own batch looks foreign: let it re-lock.
             if (foreignCounts[GROUP_TERRACOTTA] >= FOREIGN_MIN_CELLS && refitsAfterLock < MAX_REFITS &&
                 cycleIndex <= 0 && inFirstCycleWindow()
             ) {
                 val version = centreVersion
-                fitCentre(updates)
+                fitCentre(inReach)
                 fitted = true
-                if (centreVersion != version) countForeign(updates)
+                if (centreVersion != version) countForeign(inReach)
             }
-            batch = dropForeign(tick, updates)
+            batch = dropForeign(tick, inReach)
         }
 
         var g = 0
@@ -243,22 +245,16 @@ internal class ManiaSession(
             ManiaBlock.NONE -> Unit
         }
         val maniaCells = g + r + rs + c
-        if (batch.isEmpty()) return true
+        if (maniaCells == 0) return
 
         if (g + r > 0 && (!locked || refitsAfterLock < MAX_REFITS) && !fitted) fitCentre(batch)
         if (!locked) {
-            if (maniaCells > 0) logBatch(tick, g, r, rs, c, batch.size - maniaCells, 0, "ignored (centre not locked)")
-            return true
+            logBatch(tick, g, r, rs, c, batch.size - maniaCells, 0, "ignored (centre not locked)")
+            return
         }
 
-        val inNone = classify(batch)
+        classify(batch)
         val inCircle = greens.size + reds.size + redstones.size + coals.size
-        if (maniaCells == 0 && inNone == 0) return true
-
-        if (isRevert(inNone)) {
-            logBatch(tick, g, r, rs, c, batch.size - maniaCells, inCircle, "revert ($inNone cells)")
-            return false
-        }
 
         val outcomes = if (log.enabled) ArrayList<String>(3) else null
         var terracottaAccepted = false
@@ -278,7 +274,6 @@ internal class ManiaSession(
             val summary = if (outcomes.isEmpty()) "ignored (nothing in circle)" else outcomes.joinToString("; ")
             logBatch(tick, g, r, rs, c, batch.size - maniaCells, inCircle, summary)
         }
-        return true
     }
 
     /** Timer fallback for missed batches. */
@@ -296,7 +291,7 @@ internal class ManiaSession(
                 phasePredicted = true
                 if (log.enabled) log.chat("t$now predicted COAL (no batch)")
             }
-            Phase.COAL -> if (cycleIndex < MAX_CYCLES - 1 && now - cycleStartTick >= CYCLE_TICKS + MISSED_CYCLE_GRACE) {
+            Phase.COAL -> if (cycleIndex < MAX_CYCLES - 1 && now - cycleStartTick >= CYCLE_TICKS + PREDICTION_GRACE) {
                 cycleIndex++
                 cycleStartTick += CYCLE_TICKS
                 greenRing = 0
@@ -319,7 +314,7 @@ internal class ManiaSession(
      * Sorts in-circle cells by type, one entry per column. Columns receiving different types in the same batch are
      * dropped: that only happens when another boss's pattern lands on ours in the same tick.
      */
-    private fun classify(batch: List<ManiaUpdate>): Int {
+    private fun classify(batch: List<ManiaUpdate>) {
         greens.clear()
         reds.clear()
         redstones.clear()
@@ -336,7 +331,6 @@ internal class ManiaSession(
             } else if (seenType[i] != u.type) conflictStamp[i] = batchStamp
         }
 
-        var inNone = 0
         for (j in batch.indices) {
             val u = batch[j]
             val i = batchOffsets.getInt(j)
@@ -348,10 +342,9 @@ internal class ManiaSession(
                 ManiaBlock.RED -> reds.add(i)
                 ManiaBlock.REDSTONE -> redstones.add(i)
                 ManiaBlock.COAL -> coals.add(i)
-                ManiaBlock.NONE -> if (offsetBand[i] != OUTSIDE) inNone++
+                ManiaBlock.NONE -> Unit
             }
         }
-        return inNone
     }
 
     /**
@@ -403,18 +396,9 @@ internal class ManiaSession(
         ManiaBlock.NONE -> GROUP_NONE
     }
 
-    private fun isRevert(inNone: Int): Boolean {
-        if (cycleIndex < 0 || inNone < max(MIN_REVERT_CELLS, referenceCount / 2)) return false
-        // Our revert stays inside our circle; one spilling beyond it is another boss's pattern ending.
-        if (foreignCounts[GROUP_NONE] >= FOREIGN_MIN_CELLS) return false
-        // Guards against an overlapping boss reverting its own pattern on top of ours mid-mania.
-        val remaining = maniaRemaining
-        return remaining == null || remaining <= REVERT_WINDOW_SECONDS || cycleIndex >= MAX_CYCLES - 2
-    }
-
     private fun fitCentre(batch: List<ManiaUpdate>) {
-        if (!locked && beforeFirstCycle()) {
-            if (log.enabled) log.chat("Centre fit rejected: pattern arrived before our first cycle")
+        if (scheduledCycle() < 0) {
+            if (log.enabled) log.chat("Centre fit rejected: timer $maniaRemaining is off our terracotta schedule")
             return
         }
         // Each step resends the full pattern (G+R+C, G+RS+C, G+C), so greens alone cannot
@@ -553,23 +537,23 @@ internal class ManiaSession(
         }
     }
 
-    private fun inFirstCycleWindow(): Boolean {
-        val start = startRemaining ?: return false
-        val now = maniaRemaining ?: return false
-        return start >= FIRST_CYCLE_REMAINING + FIRST_CYCLE_WINDOW && abs(now - FIRST_CYCLE_REMAINING) <= FIRST_CYCLE_WINDOW
+    /**
+     * The cycle whose terracotta the mania timer says is due right now, or -1 if none is. Two bosses sharing a start
+     * to within a tick or two is rare, so this is what tells our pattern from theirs before we have ticks to count.
+     */
+    private fun scheduledCycle(): Int {
+        val now = maniaRemaining ?: return -1
+        val cycle = ((FIRST_GREEN_REMAINING - now) / CYCLE_SECONDS).roundToInt()
+        if (cycle !in 0 until MAX_CYCLES) return -1
+        return if (abs(now - (FIRST_GREEN_REMAINING - cycle * CYCLE_SECONDS)) <= TIMER_TOLERANCE) cycle else -1
     }
+
+    private fun inFirstCycleWindow() = scheduledCycle() == 0
 
     private fun bossDistSq(x: Int, z: Int): Double {
         val dx = bossX - (x + 0.5)
         val dz = bossZ - (z + 0.5)
         return dx * dx + dz * dz
-    }
-
-    /** True while a session that saw the mania start is still well ahead of our first terracotta. */
-    private fun beforeFirstCycle(): Boolean {
-        val start = startRemaining ?: return false
-        val now = maniaRemaining ?: return false
-        return start >= FIRST_CYCLE_REMAINING + FIRST_CYCLE_WINDOW && now > FIRST_CYCLE_REMAINING + PRE_START_MARGIN
     }
 
     private fun lockCentre(x: Int, z: Int, reset: Boolean) {
@@ -593,26 +577,18 @@ internal class ManiaSession(
         val sinceStart = tick - cycleStartTick
         val continuation = cycleIndex >= 0 && greenRing != 0 && phase == Phase.TERRACOTTA && !phasePredicted &&
             sinceStart <= CONTINUATION_TICKS
-        // A late batch for a cycle we already predicted as missed.
-        val replacing = cycleIndex >= 0 && greenRing == 0 && phasePredicted &&
-            sinceStart <= CYCLE_WINDOW_MAX - CYCLE_TICKS
-        // Lost our ring (missed cycle) but a strong RED batch arrived off-window (e.g. after a
-        // 25t-late start every real step lands outside 58..76): re-anchor instead of staying
-        // unknown forever. RED-gated so redstone/coal resends (R~0) can never trigger it.
-        val reanchoring = cycleIndex >= 0 && greenRing == 0 && phasePredicted &&
-            reds.size >= MIN_RED_FOR_LOCK
 
-        if (!continuation && !replacing && !reanchoring) {
+        if (!continuation) {
             // RED only appears in the terracotta step (redstone/coal resend G+C/G+RS+C):
             // greens alone are a resend, not a new cycle (t52144/t52404 false starts).
             if (reds.size < MIN_RED_FOR_LOCK)
                 return outcome(false) { "ignored (no RED ${reds.size}/${MIN_RED_FOR_LOCK}; resend?)" }
-            // Our cycles are ~66 server ticks apart; another boss's batches rarely land in this window.
-            if (cycleIndex >= 0 && sinceStart !in CYCLE_WINDOW_MIN..CYCLE_WINDOW_MAX)
+            // The timer anchors our first cycle; from there every step is an exact number of ticks away.
+            if (cycleIndex < 0) {
+                if (scheduledCycle() < 0) return outcome(false) { "ignored (timer $maniaRemaining off schedule)" }
+            } else if (abs(sinceStart - CYCLE_TICKS) > STEP_TOLERANCE)
                 return outcome(false) { "ignored (${sinceStart}t since cycle start)" }
             if (cycleIndex >= MAX_CYCLES - 1) return outcome(false) { "ignored (cycle limit)" }
-        }
-        if (!continuation) {
             val minCells = max(MIN_CELLS, (referenceCount * MIN_TERRACOTTA_COVERAGE).toInt())
             if (total < minCells) return outcome(false) { "ignored ($total/$minCells cells)" }
         }
@@ -632,7 +608,7 @@ internal class ManiaSession(
             return outcome(false) { "ignored (ambiguous ring, $pickedConsistent vs ${pickedConsistent - margin})" }
 
         if (!continuation) {
-            if (!replacing && !reanchoring) cycleIndex++
+            cycleIndex = if (cycleIndex < 0) scheduledCycle() else cycleIndex + 1
             greenRing = ring
             phase = Phase.TERRACOTTA
             phasePredicted = false
@@ -643,7 +619,7 @@ internal class ManiaSession(
         lastRedCount += reds.size
 
         return outcome(true) {
-            val kind = if (continuation) "continuation" else if (replacing) "late" else if (reanchoring) "re-anchored" else "cycle ${cycleIndex + 1}"
+            val kind = if (continuation) "continuation" else "cycle ${cycleIndex + 1}"
             "ours, $kind, ring $ring ($consistent/$total)"
         }
     }
@@ -656,28 +632,28 @@ internal class ManiaSession(
 
         val from = if (target == Phase.REDSTONE) Phase.TERRACOTTA else Phase.REDSTONE
         if (phase != from && !(phase == target && phasePredicted)) return outcome(false) { "ignored (phase $phase)" }
-        val since = tick - if (target == Phase.REDSTONE) cycleStartTick else redstoneTick
-        val minDelay = if (target == Phase.REDSTONE) MIN_REDSTONE_DELAY else MIN_COAL_DELAY
-        if (since < minDelay) return outcome(false) { "ignored (${since}t after previous step)" }
+        val offSchedule = tick - cycleStartTick - if (target == Phase.REDSTONE) REDSTONE_OFFSET else COAL_OFFSET
+        if (abs(offSchedule) > STEP_TOLERANCE) return outcome(false) { "ignored (${offSchedule}t off schedule)" }
         val minCells = max(MIN_CELLS, (lastRedCount * MIN_STAGE_COVERAGE).toInt())
         if (cells.size < minCells) return outcome(false) { "ignored (${cells.size}/$minCells cells)" }
 
+        // Only ring cells count: the coal step also covers the core and border, which say nothing about the ring.
         fillHistograms(cells, redHist)
         val ringCells = ringSum(redHist)
         val inferred = greenRing == 0
         // The safe ring is the one that didn't turn.
-        if (inferred && pickRing { ringCells - redHist[it] } < cells.size * MIN_MARGIN / 2)
+        if (inferred && pickRing { ringCells - redHist[it] } < ringCells * MIN_MARGIN / 2)
             return outcome(false) { "ignored (cannot infer ring)" }
         val ring = if (inferred) pickedRing else greenRing
         val consistent = ringCells - redHist[ring]
-        if (consistent < cells.size * MIN_CONSISTENCY)
-            return outcome(false) { "ignored (consistency $consistent/${cells.size})" }
+        if (consistent < ringCells * MIN_CONSISTENCY)
+            return outcome(false) { "ignored (consistency $consistent/$ringCells)" }
 
         greenRing = ring
         phase = target
         phasePredicted = false
         if (target == Phase.REDSTONE) redstoneTick = tick else coalTick = tick
-        return outcome(true) { "ours ($consistent/${cells.size}${if (inferred) ", inferred ring $ring" else ""})" }
+        return outcome(true) { "ours ($consistent/$ringCells${if (inferred) ", inferred ring $ring" else ""})" }
     }
 
     /**
@@ -722,19 +698,20 @@ internal class ManiaSession(
         const val REDSTONE_OFFSET = 25
         const val REDSTONE_DURATION = 20
         const val COAL_OFFSET = REDSTONE_OFFSET + REDSTONE_DURATION
-        const val CYCLE_TICKS = 66
+        const val CYCLE_TICKS = 65
         const val MAX_CYCLES = 8
-        const val PREDICTION_GRACE = 5
-        const val MISSED_CYCLE_GRACE = 4
-        const val FIRST_CYCLE_REMAINING = 25.0
-        const val FIRST_CYCLE_WINDOW = 0.35
-        const val PRE_START_MARGIN = 0.5
+        /** Logged steps never strayed from these offsets; other bosses' steps got as close as two ticks. */
+        const val STEP_TOLERANCE = 1
+        const val PREDICTION_GRACE = STEP_TOLERANCE + 1
+        /** Timer at our first terracotta, which shows 24.9 or 25.0; a boss shown at 25.1 is someone else's. */
+        const val FIRST_GREEN_REMAINING = 24.95
+        const val CYCLE_SECONDS = CYCLE_TICKS / 20.0
+        const val TIMER_TOLERANCE = 0.11
+        /** Our pattern's blocks were always within this far of the boss's feet at the mania start. */
+        const val REACH_BELOW_BOSS = 6
+        const val REACH_ABOVE_BOSS = 5
         const val NEAR_FIT_RANGE = 2
-        const val CYCLE_WINDOW_MIN = 58L
-        const val CYCLE_WINDOW_MAX = 76L
         const val CONTINUATION_TICKS = 3
-        const val MIN_REDSTONE_DELAY = 10
-        const val MIN_COAL_DELAY = 8
 
         const val MIN_CELLS = 8
         const val MIN_RED_FOR_LOCK = 12
@@ -756,8 +733,6 @@ internal class ManiaSession(
         const val MIN_MARGIN = 0.15
         const val MIN_TERRACOTTA_COVERAGE = 0.4
         const val MIN_STAGE_COVERAGE = 0.3
-        const val MIN_REVERT_CELLS = 30
-        const val REVERT_WINDOW_SECONDS = 3.0
 
         fun packColumn(x: Int, z: Int): Long = (x.toLong() shl 32) or (z.toLong() and 0xFFFFFFFFL)
     }

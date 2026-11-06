@@ -260,7 +260,7 @@ object ManiaHelper : Module(
         val s = session
         if (s != null) {
             for (update in batch) surfaceCache.invalidate(s, update.x, update.z)
-            if (!s.processBatch(tick, batch, synthetic)) endSession("blocks reverted")
+            s.processBatch(tick, batch, synthetic)
         }
         batch.clear()
     }
@@ -459,8 +459,8 @@ object ManiaHelper : Module(
         }
 
         private companion object {
-            /** Our own pattern's blocks land within this many blocks of the boss's feet (from logged manias). */
-            const val REACH_UP = 6
+            /** Render this far from the boss's feet; around 10 blocks out the player takes damage anyway. */
+            const val REACH_UP = 10
             const val REACH_DOWN = 10
             const val HEADROOM = 2
         }
