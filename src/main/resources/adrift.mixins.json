@@ -13,8 +13,10 @@
     "requireAnnotations": true
   },
   "client": [
+    "ClientboundMoveEntityPacketAccessor",
     "ClientPacketListenerMixin",
     "ConnectionMixin",
+    "EntityRenderDispatcherMixin",
     "EntityRendererMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin"
