@@ -1,6 +1,7 @@
 package dev.cd.adrift.mixin;
 
 import dev.cd.adrift.features.boss.CustomTwinclaws;
+import dev.cd.adrift.features.boss.StonewrathDisplay;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.world.entity.Entity;
@@ -10,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Skips rendering the falling blocks Custom Twinclaws draws itself. Hooked on the dispatcher rather than
+ * Skips rendering the falling blocks Custom Twinclaws and Stonewrath hide. Hooked on the dispatcher rather than
  * {@code EntityRenderer} because {@code FallingBlockRenderer} overrides {@code shouldRender}.
  */
 @Mixin(EntityRenderDispatcher.class)
@@ -21,6 +22,6 @@ public abstract class EntityRenderDispatcherMixin {
     private void adrift$hideClaws(Entity entity, Frustum frustum, double x, double y, double z, float partialTicks, CallbackInfoReturnable<Boolean> cir) {
     //?} else
     //private void adrift$hideClaws(Entity entity, Frustum frustum, double x, double y, double z, CallbackInfoReturnable<Boolean> cir) {
-        if (CustomTwinclaws.isHidden(entity)) cir.setReturnValue(false);
+        if (CustomTwinclaws.isHidden(entity) || StonewrathDisplay.isHidden(entity)) cir.setReturnValue(false);
     }
 }
