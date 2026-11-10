@@ -45,6 +45,10 @@ import java.nio.file.Files
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 object ManiaHelper : Module(
     "Mania Helper",
@@ -58,6 +62,15 @@ object ManiaHelper : Module(
     private const val PLANE_Y_OFFSET = 0.1
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
+    /** The wave is about seven blocks long and passes a column roughly once a second. */
+    private const val PULSE_WAVE_NUMBER = 0.88
+    private const val PULSE_SPEED = 6.4
+    /** Outline glow strength while the pulse is off. */
+    private const val STATIC_CREST = 0.5
+    private const val EDGE_SAMPLES = 8
+    // North and south sides sampled west then east, west and east sides sampled north then south.
+    private val EDGE_SAMPLE_X = doubleArrayOf(0.25, 0.75, 0.25, 0.75, 0.12, 0.12, 0.88, 0.88)
+    private val EDGE_SAMPLE_Z = doubleArrayOf(0.12, 0.12, 0.88, 0.88, 0.25, 0.75, 0.25, 0.75)
 
     private enum class RenderStyle { PLANE, BLOCK_TINT }
 
@@ -92,6 +105,21 @@ object ManiaHelper : Module(
         desc = "Only render columns this close to you, max renders the whole pattern",
         unit = " blocks"
     )
+    private val pulse by BooleanSetting(
+        "Colour pulse",
+        default = true,
+        desc = "Ripples a wave of brighter colour out from the centre of the pattern"
+    )
+    private val outline by BooleanSetting(
+        "Outline",
+        default = true,
+        desc = "Traces the edge of each ring, following steps and slabs; the safe ring glows"
+    )
+    //? if >=26.2 {
+    private val outlineWidth by NumberSetting("Outline width", 2.0, 0.5..5.0, 0.25, desc = "Thickness of the outline")
+    //?} else
+    //private val outlineWidth by NumberSetting("Outline width", 2.0, 0.5, 5.0, 0.25, desc = "Thickness of the outline")
+        .withDependency { outline }
     private val safeOnly by BooleanSetting("Safe only", default = false, desc = "Only render the safe (green) ring")
     private val onlyDifferent by BooleanSetting(
         "Only where different",
@@ -138,6 +166,8 @@ object ManiaHelper : Module(
     private val batch = ArrayList<ManiaUpdate>()
     private val surfaceCache = SurfaceCache()
     private val colours = Array(ManiaBlock.entries.size) { Colors.WHITE }
+    private val contour = ManiaOutline()
+    private val pulseEpoch = System.nanoTime()
     private var debugWriter: BufferedWriter? = null
     private var debugWriterFailed = false
 
@@ -194,23 +224,44 @@ object ManiaHelper : Module(
             val greenOnly = safeOnly
             val skipMatching = onlyDifferent
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
+            val pulsing = pulse
+            val time = (System.nanoTime() - pulseEpoch) / 1.0e9
+            val outlined = outline
+            contour.begin(s.centreX, s.centreZ, s.bossY)
 
             for (i in 0 until ManiaGeometry.offsetCount) {
                 val expected = s.expectedBlock(ManiaGeometry.offsetBand[i]) ?: continue
                 if (greenOnly && expected != ManiaBlock.GREEN) continue
-                val x = s.centreX + ManiaGeometry.offsetX[i]
-                val z = s.centreZ + ManiaGeometry.offsetZ[i]
+                val offX = ManiaGeometry.offsetX[i]
+                val offZ = ManiaGeometry.offsetZ[i]
+                val x = s.centreX + offX
+                val z = s.centreZ + offZ
                 val dx = x + 0.5 - px
                 val dz = z + 0.5 - pz
                 if (dx * dx + dz * dz > radiusSq) continue
                 surfaceCache.ensure(i, level, x, z)
-                val colour = colours[expected.ordinal]
-                for (surface in surfaceCache.surfaces[i]) {
+                val surfaces = surfaceCache.surfaces[i]
+                if (surfaces.isEmpty()) continue
+                val safe = expected == ManiaBlock.GREEN
+                val crest = if (pulsing) pulseCrest(offX, offZ, time, safe) else STATIC_CREST
+                val colour = colours[expected.ordinal].let { if (pulsing) pulsed(it, crest, safe) else it }
+                for (surface in surfaces) {
                     if (skipMatching && surface.type == expected) continue
                     if (blockTint) for (box in surface.tints) drawFilledBox(box, colour, true)
                     else drawFlatSquare(x + 0.5, z + 0.5, surface.top + PLANE_Y_OFFSET, size, colour, true)
                 }
+                if (!outlined) continue
+                for (side in 0 until 4) {
+                    val j = ManiaGeometry.offsetIndex(offX + ManiaOutline.SIDE_DX[side], offZ + ManiaOutline.SIDE_DZ[side])
+                    val beyond = if (j >= 0) s.expectedBlock(ManiaGeometry.offsetBand[j]) else null
+                    if (zoneRank(expected) <= zoneRank(beyond)) continue
+                    for (surface in surfaces) {
+                        if (skipMatching && surface.type == expected) continue
+                        contour.edge(offX, offZ, side, surface.edges, expected, crest)
+                    }
+                }
             }
+            if (!contour.isEmpty) contour.draw(this, outlineWidth.toFloat(), colours)
         }
     }
 
@@ -355,6 +406,28 @@ object ManiaHelper : Module(
         return label to if (status == "SAFE") Colors.MINECRAFT_GREEN else Colors.MINECRAFT_RED
     }
 
+    /** Each boundary is drawn once, by the zone that matters more: safe over danger over coal over nothing. */
+    private fun zoneRank(block: ManiaBlock?): Int = when (block) {
+        ManiaBlock.GREEN -> 3
+        ManiaBlock.RED, ManiaBlock.REDSTONE -> 2
+        ManiaBlock.COAL -> 1
+        ManiaBlock.NONE, null -> 0
+    }
+
+    /** Strength, 0..1, of the wave travelling out from the centre at this column. The safe ring peaks sharper. */
+    private fun pulseCrest(offX: Int, offZ: Int, time: Double, safe: Boolean): Double {
+        val distance = sqrt((offX * offX + offZ * offZ).toDouble())
+        val wave = 0.5 + 0.5 * sin(distance * PULSE_WAVE_NUMBER - time * PULSE_SPEED)
+        return if (safe) wave.pow(1.75) else 0.4 + 0.35 * wave
+    }
+
+    private fun pulsed(base: Color, crest: Double, safe: Boolean): Color {
+        val rgb = base.rgba and 0xFFFFFF
+        val hot = mixRgb(rgb, ManiaOutline.WHITE, if (safe) 0.78 else 0.45)
+        val alpha = (base.alpha * (0.48 + 0.68 * crest)).roundToInt().coerceIn(0, 245)
+        return colourOf(mixRgb(rgb, hot, crest * if (safe) 0.65 else 0.2), alpha)
+    }
+
     private fun colourFor(block: ManiaBlock): Color = when (block) {
         ManiaBlock.GREEN -> safeColour
         ManiaBlock.RED -> terracottaColour
@@ -399,7 +472,29 @@ object ManiaHelper : Module(
         }
     }
 
-    private class Surface(val top: Double, val type: ManiaBlock, val tints: List<AABB>)
+    /** [edges] holds the surface height along each side of the block, see [edgeHeights]. */
+    private class Surface(val top: Double, val type: ManiaBlock, val tints: List<AABB>, val edges: DoubleArray)
+
+    /**
+     * Height of the block's top just inside each of its four sides, two samples per side (one per half, which is as
+     * fine as stairs get), indexed `side * 2 + half` in [ManiaOutline] side order. Parts of a side the shape doesn't
+     * reach (fences, walls) take the shape's top.
+     */
+    private fun edgeHeights(boxes: List<AABB>, y: Int, top: Double): DoubleArray {
+        val heights = DoubleArray(EDGE_SAMPLES) { top }
+        if (boxes.size <= 1) return heights
+        for (k in 0 until EDGE_SAMPLES) {
+            val sx = EDGE_SAMPLE_X[k]
+            val sz = EDGE_SAMPLE_Z[k]
+            var best = Double.NEGATIVE_INFINITY
+            for (box in boxes) {
+                if (sx < box.minX || sx > box.maxX || sz < box.minZ || sz > box.maxZ) continue
+                if (box.maxY > best) best = box.maxY
+            }
+            if (best != Double.NEGATIVE_INFINITY) heights[k] = y + best
+        }
+        return heights
+    }
 
     /** Standable surfaces per column within the mania's vertical reach, keyed by offset index of the current centre. */
     private class SurfaceCache {
@@ -448,9 +543,10 @@ object ManiaHelper : Module(
                     continue
                 }
                 if (clearance >= HEADROOM && y <= baseY + REACH_UP) {
+                    val top = y + shape.max(Direction.Axis.Y)
                     val tint = if (withTints) tintBoxes(shape, x, y, z) else emptyList()
                     (found ?: ArrayList<Surface>(2).also { found = it }) +=
-                        Surface(y + shape.max(Direction.Axis.Y), ManiaBlock.of(state), tint)
+                        Surface(top, ManiaBlock.of(state), tint, edgeHeights(shape.toAabbs(), y, top))
                 }
                 clearance = 0
             }
