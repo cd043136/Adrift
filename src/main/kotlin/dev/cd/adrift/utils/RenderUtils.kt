@@ -40,23 +40,6 @@ object RenderUtils {
         )
     }
 
-    fun RenderExtractEvent.drawFlatSquare(
-        centerX: Double,
-        centerZ: Double,
-        y: Double,
-        size: Double,
-        colour: Color,
-        depth: Boolean = false
-    ) {
-        if (size <= 0.0) return
-        val half = size / 2.0
-        val x0 = centerX - half
-        val x1 = centerX + half
-        val z0 = centerZ - half
-        val z1 = centerZ + half
-        emitQuad(colour, depth, x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0)
-    }
-
     /**
      * Shape-accurate block tint boxes: the block's own collision boxes at `(x, y, z)`, grown by [epsilon] so they
      * don't z-fight the block faces. Draw each with a filled box so stairs/slabs/fences hug their geometry.
