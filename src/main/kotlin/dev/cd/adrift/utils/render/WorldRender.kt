@@ -114,14 +114,17 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
         val nx = (x1 - x0).toFloat()
         val ny = (y1 - y0).toFloat()
         val nz = (z1 - z0).toFloat()
-        for ((x, y, z) in arrayOf(Triple(x0, y0, z0), Triple(x1, y1, z1))) {
-            put(x, y, z, color.rgba)
-            val i = (count - 1) * stride
-            data[i + 3] = nx
-            data[i + 4] = ny
-            data[i + 5] = nz
-            data[i + 6] = width
-        }
+        lineVertex(x0, y0, z0, nx, ny, nz, color.rgba, width)
+        lineVertex(x1, y1, z1, nx, ny, nz, color.rgba, width)
+    }
+
+    private fun lineVertex(x: Double, y: Double, z: Double, nx: Float, ny: Float, nz: Float, rgba: Int, width: Float) {
+        put(x, y, z, rgba)
+        val i = (count - 1) * stride
+        data[i + 3] = nx
+        data[i + 4] = ny
+        data[i + 5] = nz
+        data[i + 6] = width
     }
 
     fun boxEdges(aabb: AABB, color: Color, width: Float) {
