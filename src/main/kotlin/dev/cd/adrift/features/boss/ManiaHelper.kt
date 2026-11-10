@@ -46,7 +46,6 @@ object ManiaHelper : Module(
     private const val SCAN_DELAY_TICKS = 40
     private const val MAX_LOGGED_SESSIONS = 100
     private const val TEXT_HEIGHT = 9
-    private const val PLANE_Y_OFFSET = 0.1
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
     /** The wave is about seven blocks long and passes a column roughly once a second. */
@@ -59,15 +58,6 @@ object ManiaHelper : Module(
     private val EDGE_SAMPLE_X = doubleArrayOf(0.25, 0.75, 0.25, 0.75, 0.12, 0.12, 0.88, 0.88)
     private val EDGE_SAMPLE_Z = doubleArrayOf(0.12, 0.12, 0.88, 0.88, 0.25, 0.75, 0.25, 0.75)
 
-    private enum class RenderStyle(private val label: String) {
-        PLANE("Plane"), BLOCK_TINT("Block Tint");
-
-        override fun toString() = label
-    }
-
-    private val style by choice("Render Style", RenderStyle.BLOCK_TINT, "Plane draws a square on each block; Block Tint colours the blocks themselves.")
-    private val squareSize by double("Square Size", 0.5, 0.1..1.0, 0.05, "Side length of the plane squares.")
-        .showIf { style != RenderStyle.BLOCK_TINT }
     private val renderRadius by int(
         "Render Radius", MAX_RENDER_RADIUS, 3..MAX_RENDER_RADIUS, 1,
         "Only draws columns this close to you; the maximum draws the whole pattern.", " blocks"
@@ -160,9 +150,7 @@ object ManiaHelper : Module(
             val fromCentreZ = pz - (s.centreZ + 0.5)
             if (fromCentreX * fromCentreX + fromCentreZ * fromCentreZ > MAX_PLAYER_DISTANCE_SQ) return@on
 
-            val size = squareSize
-            val blockTint = style == RenderStyle.BLOCK_TINT
-            surfaceCache.sync(s, blockTint)
+            surfaceCache.sync(s)
             val radius = renderRadius
             val radiusSq = if (radius >= MAX_RENDER_RADIUS) Double.MAX_VALUE else (radius * radius).toDouble()
             val greenOnly = safeOnly
@@ -173,7 +161,7 @@ object ManiaHelper : Module(
             val outlined = outline
             contour.begin(s.centreX, s.centreZ, s.bossY)
 
-            // One batch for the whole pattern instead of a draw per square
+            // One batch for the whole pattern instead of a draw per block
             quads(depth = true) {
                 for (i in 0 until ManiaGeometry.offsetCount) {
                     val expected = s.expectedBlock(ManiaGeometry.offsetBand[i]) ?: continue
@@ -193,8 +181,7 @@ object ManiaHelper : Module(
                     val colour = colours[expected.ordinal].let { if (pulsing) pulsed(it, crest, safe) else it }
                     for (surface in surfaces) {
                         if (skipMatching && surface.type == expected) continue
-                        if (blockTint) for (box in surface.tints) box(box, colour)
-                        else flatSquare(x + 0.5, z + 0.5, surface.top + PLANE_Y_OFFSET, size, colour)
+                        for (box in surface.tints) box(box, colour)
                     }
                     if (!outlined) continue
                     for (side in 0 until 4) {
@@ -425,7 +412,7 @@ object ManiaHelper : Module(
     }
 
     /** [edges] holds the surface height along each side of the block, see [edgeHeights]. */
-    private class Surface(val top: Double, val type: ManiaBlock, val tints: List<AABB>, val edges: DoubleArray)
+    private class Surface(val type: ManiaBlock, val tints: List<AABB>, val edges: DoubleArray)
 
     /**
      * Height of the block's top just inside each of its four sides, two samples per side (one per half, which is as
@@ -463,14 +450,12 @@ object ManiaHelper : Module(
         private var owner: ManiaSession? = null
         private var version = -1
         private var baseY = 0
-        private var withTints = false
 
-        fun sync(s: ManiaSession, tints: Boolean) {
-            if (s === owner && s.centreVersion == version && tints == withTints) return
+        fun sync(s: ManiaSession) {
+            if (s === owner && s.centreVersion == version) return
             owner = s
             version = s.centreVersion
             baseY = Mth.floor(s.bossY)
-            withTints = tints
             valid.fill(false)
         }
 
@@ -504,9 +489,8 @@ object ManiaHelper : Module(
                 if (clearance >= HEADROOM && y <= baseY + REACH_UP) {
                     val boxes = shape.toAabbs()
                     val top = y + shape.max(Direction.Axis.Y)
-                    val tint = if (withTints) tintBoxes(boxes, x, y, z) else emptyList()
                     (found ?: ArrayList<Surface>(2).also { found = it }) +=
-                        Surface(top, ManiaBlock.of(state), tint, edgeHeights(boxes, y, top))
+                        Surface(ManiaBlock.of(state), tintBoxes(boxes, x, y, z), edgeHeights(boxes, y, top))
                 }
                 clearance = 0
             }

@@ -18,7 +18,7 @@ enum class BoxStyle { FILLED, OUTLINE, FILLED_OUTLINE }
 /**
  * Collects world-space geometry, relative to the camera, and submits it in one draw per render type. Building a
  * frame's shapes into one batch instead of one submission per shape keeps big patterns (Mania Helper draws
- * hundreds of squares) cheap. Coordinates are absolute; the camera offset is applied while recording.
+ * hundreds of boxes) cheap. Coordinates are absolute; the camera offset is applied while recording.
  */
 class GeometryBatch internal constructor(private val lines: Boolean) {
     private var data = FloatArray(256)
@@ -80,13 +80,6 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
         quad(color, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1) // south
         quad(color, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0) // west
         quad(color, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1) // east
-    }
-
-    /** A horizontal square of side [size] centred on ([centerX], [centerZ]). */
-    fun flatSquare(centerX: Double, centerZ: Double, y: Double, size: Double, color: Color) {
-        if (size <= 0.0) return
-        val half = size / 2.0
-        quad(color, centerX - half, y, centerZ - half, centerX - half, y, centerZ + half, centerX + half, y, centerZ + half, centerX + half, y, centerZ - half)
     }
 
     /** A horizontal strip [width] wide from [start] to [end], at [start]'s height. */
