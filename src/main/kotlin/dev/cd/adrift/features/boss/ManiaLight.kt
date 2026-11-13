@@ -1,8 +1,13 @@
 package dev.cd.adrift.features.boss
 
 import dev.cd.adrift.utils.Color
+import dev.cd.adrift.utils.Colors
 import dev.cd.adrift.utils.render.GeometryBatch
 import net.minecraft.world.phys.AABB
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * The top faces of one frame's pattern tints, lit by [ManiaFx.light] in an additive layer just above the tint. Each
@@ -43,8 +48,47 @@ internal class ManiaLight {
 
     /** [originX], [originZ]: world position of the pattern's centre column's middle. */
     fun draw(batch: GeometryBatch, fx: ManiaFx, originX: Double, originZ: Double) {
+        if (fx.lightDetail > 0) drawLight(batch, fx, originX, originZ)
+        if (fx.glitter) drawStars(batch, fx, originX, originZ)
+    }
+
+    private fun drawStars(batch: GeometryBatch, fx: ManiaFx, originX: Double, originZ: Double) {
+        for (f in 0 until count) {
+            val offX = info[f * INFO]
+            val offZ = info[f * INFO + 1]
+            if (!fx.sparkle(offX, offZ)) continue
+            val x = originX + offX - 0.5 + fx.sparkleX
+            val z = originZ + offZ - 0.5 + fx.sparkleZ
+            val o = f * 5
+            // A stair's lower box reaches under its upper one; that star is hidden by the block.
+            if (x < faces[o] || x > faces[o + 1] || z < faces[o + 2] || z > faces[o + 3]) continue
+            val colour = Color(info[f * INFO + 3]).mix(Colors.WHITE, 0.75)
+            star(batch, x, faces[o + 4] + STAR_LIFT, z, fx.sparkleSize, fx.sparkleAngle, colour, fx.sparkleGlow)
+        }
+    }
+
+    /** A flat eight-pointed star: four long arms and four short ones, bright at the middle and fading to the tips. */
+    private fun star(batch: GeometryBatch, x: Double, y: Double, z: Double, size: Double, angle: Double, colour: Color, glow: Double) {
+        val core = Color(((glow * 255).roundToInt().coerceIn(0, 255) shl 24) or colour.rgb).rgba
+        val flank = Color(((glow * 0.3 * 255).roundToInt().coerceIn(0, 255) shl 24) or colour.rgb).rgba
+        val tip = colour.rgb
+        for (arm in 0 until 8) {
+            val a = angle + arm * PI / 4
+            val length = if (arm % 2 == 0) size else size * 0.45
+            val width = length * 0.16
+            val dx = cos(a)
+            val dz = sin(a)
+            batch.shadedQuad(
+                x, y, z, core,
+                x + dx * width - dz * width, y, z + dz * width + dx * width, flank,
+                x + dx * length, y, z + dz * length, tip,
+                x + dx * width + dz * width, y, z + dz * width - dx * width, flank,
+            )
+        }
+    }
+
+    private fun drawLight(batch: GeometryBatch, fx: ManiaFx, originX: Double, originZ: Double) {
         val n = fx.lightDetail
-        if (n <= 0) return
         val side = n + 1
         if (corners.size < side * side) corners = IntArray(side * side)
         for (f in 0 until count) {
@@ -82,5 +126,6 @@ internal class ManiaLight {
         /** Above the tint, below the outline. */
         const val LIFT = 0.003
         const val INFO = 4
+        const val STAR_LIFT = 0.002
     }
 }

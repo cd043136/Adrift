@@ -65,6 +65,9 @@ object ManiaHelper : Module(
         "Gives each block its own look: redstone smoulders and flares like embers, smoke drifts over coal and light " +
             "ripples across the safe ring like sun through water.",
     )
+    private val glitter by bool(
+        "Glitter", false, "Stars twinkle across the floor, more and more of them as coal gets closer.",
+    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
@@ -164,8 +167,9 @@ object ManiaHelper : Module(
             val now = System.nanoTime()
             val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
             fx.materials = materials
+            fx.glitter = glitter
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow)
-            val lit = fx.lightDetail > 0
+            val lit = fx.lit
             light.begin()
             val outlined = outline
             contour.begin(s.centreX, s.centreZ, s.bossY)

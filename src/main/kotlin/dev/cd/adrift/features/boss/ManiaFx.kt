@@ -54,8 +54,27 @@ internal class ManiaFx {
     /** Gives each block its own texture: embers on redstone, smoke over coal, caustics on the safe ring. */
     var materials = false
 
+    /** Twinkling stars on the floor, more of them as coal gets closer. */
+    var glitter = false
+
     /** Grid cells per block side of [ManiaLight], 0 when nothing is lit. */
     var lightDetail = 0
+        private set
+
+    /** Whether anything draws in the light layer. */
+    val lit get() = lightDetail > 0 || glitter
+
+    // The star [sparkle] found, in block coordinates within its column.
+    var sparkleX = 0.0
+        private set
+    var sparkleZ = 0.0
+        private set
+    var sparkleSize = 0.0
+        private set
+    var sparkleAngle = 0.0
+        private set
+    /** Brightness, 0..1. */
+    var sparkleGlow = 0.0
         private set
 
     /** [tick]: the server tick, fractional for frames between ticks. */
@@ -119,6 +138,22 @@ internal class ManiaFx {
             else -> Unit
         }
         return packLight()
+    }
+
+    /** Whether column ([offX], [offZ]) has a star right now, which is then described by the sparkle fields. */
+    fun sparkle(offX: Int, offZ: Int): Boolean {
+        if (!glitter) return false
+        val clock = time * GLITTER_RATE + hash(offX, offZ, 3)
+        val slot = floor(clock).toInt()
+        val chance = GLITTER_CHANCE + GLITTER_RUSH * urgency().pow(2)
+        if (hash(offX, offZ, slot * 31 + 5) >= chance) return false
+        val life = clock - slot
+        sparkleGlow = sin(PI * life)
+        sparkleX = 0.15 + 0.7 * hash(offX, offZ, slot * 7 + 11)
+        sparkleZ = 0.15 + 0.7 * hash(offX, offZ, slot * 13 + 17)
+        sparkleSize = GLITTER_SIZE * (0.45 + 0.55 * sparkleGlow)
+        sparkleAngle = hash(offX, offZ, slot * 3 + 23) * PI / 2 + life * 1.2
+        return true
     }
 
     /** Redstone flickers like embers, now and then flaring orange. */
@@ -235,6 +270,12 @@ internal class ManiaFx {
         private const val CAUSTIC = 0.32
         private val SMOKE = Color(0xFF9C90B0.toInt())
         private const val SMOKE_GLOW = 0.2
+        /** Star slots per second per column; each star lasts a slot. */
+        private const val GLITTER_RATE = 2.0
+        /** Share of columns with a star, at rest and added just before coal. */
+        private const val GLITTER_CHANCE = 0.03
+        private const val GLITTER_RUSH = 0.3
+        private const val GLITTER_SIZE = 0.42
 
         fun distance(x: Double, z: Double) = sqrt(x * x + z * z)
         fun distance(x: Int, z: Int) = sqrt((x * x + z * z).toDouble())
