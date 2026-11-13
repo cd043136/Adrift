@@ -49,6 +49,15 @@ internal class ManiaFx {
     private var nextWave = 0
     private var waveSession: ManiaSession? = null
     private var waveKey = -1
+    /** Ripples from steps: centre, start time and strength, oldest replaced first. */
+    private val rippleU = DoubleArray(MAX_RIPPLES)
+    private val rippleV = DoubleArray(MAX_RIPPLES)
+    private val rippleStart = DoubleArray(MAX_RIPPLES) { Double.NEGATIVE_INFINITY }
+    private val rippleSize = DoubleArray(MAX_RIPPLES)
+    private var nextRipple = 0
+    private var stepU = Double.NaN
+    private var stepV = Double.NaN
+    private var wasOnGround = true
 
     // Light being summed for one point, premultiplied by intensity.
     private var lightR = 0.0
@@ -65,6 +74,9 @@ internal class ManiaFx {
 
     /** A ring of light bursts out from the centre whenever the pattern changes. */
     var shockwaves = false
+
+    /** Rings spread over the floor from your steps, like walking on water. */
+    var ripples = false
 
     /** Tint colours by block ordinal. */
     var colours: Array<Color> = emptyArray()
@@ -89,8 +101,11 @@ internal class ManiaFx {
     var sparkleGlow = 0.0
         private set
 
-    /** [tick]: the server tick, fractional for frames between ticks. */
-    fun begin(style: ManiaStyle, time: Double, session: ManiaSession, tick: Double) {
+    /**
+     * [tick]: the server tick, fractional for frames between ticks. ([playerU], [playerV]): the player's feet relative to
+     * the centre column's middle.
+     */
+    fun begin(style: ManiaStyle, time: Double, session: ManiaSession, tick: Double, playerU: Double, playerV: Double, onGround: Boolean) {
         val dt = if (lastTime.isNaN()) 0.0 else (time - lastTime).coerceIn(0.0, MAX_FRAME)
         lastTime = time
         this.style = style
@@ -102,8 +117,9 @@ internal class ManiaFx {
         sweep = TAU * (cycle ?: fraction(time / CYCLE_SECONDS))
         coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
         trackWaves(session)
+        trackSteps(playerU, playerV, onGround)
         lightDetail = when {
-            style == ManiaStyle.RADAR || materials -> 4
+            style == ManiaStyle.RADAR || materials || ripplesLive() -> 4
             wavesLive() -> 2
             else -> 0
         }
@@ -149,6 +165,7 @@ internal class ManiaFx {
         lightB = 0.0
         if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
         if (shockwaves) shockwaveLight(u, v)
+        if (ripples) rippleLight(u, v, colour)
         if (materials) when (type) {
             ManiaBlock.GREEN -> caustics(u, v, colour)
             ManiaBlock.REDSTONE -> add(EMBER, EMBER_GLOW * ember(offX, offZ) * exp(-EMBER_FOCUS * sq(u - offX, v - offZ)))
@@ -192,6 +209,53 @@ internal class ManiaFx {
             if (r < front) glow += WAVE_WAKE * exp(-(front - r) / 3)
             add(Color(waveColour[w]), glow * fade)
         }
+    }
+
+    /** A ripple every [STEP] blocks walked, and a bigger one on landing. */
+    private fun trackSteps(u: Double, v: Double, onGround: Boolean) {
+        if (!ripples) {
+            stepU = Double.NaN
+            return
+        }
+        if (onGround) {
+            if (!wasOnGround) ripple(u, v, LANDING)
+            else if (stepU.isNaN() || sq(u - stepU, v - stepV) > STEP * STEP) ripple(u, v, 1.0)
+        }
+        wasOnGround = onGround
+    }
+
+    private fun ripple(u: Double, v: Double, size: Double) {
+        stepU = u
+        stepV = v
+        rippleU[nextRipple] = u
+        rippleV[nextRipple] = v
+        rippleStart[nextRipple] = time
+        rippleSize[nextRipple] = size
+        nextRipple = (nextRipple + 1) % MAX_RIPPLES
+    }
+
+    private fun ripplesLive() = ripples && (0 until MAX_RIPPLES).any { time - rippleStart[it] < RIPPLE_LIFE * rippleSize[it] }
+
+    /** Two rings per ripple, the second trailing the first, thinning and fading as they spread. */
+    private fun rippleLight(u: Double, v: Double, colour: Color) {
+        var glow = 0.0
+        for (i in 0 until MAX_RIPPLES) {
+            val size = rippleSize[i]
+            val life = RIPPLE_LIFE * size
+            val age = time - rippleStart[i]
+            if (age < 0 || age >= life) continue
+            val r = distance(u - rippleU[i], v - rippleV[i])
+            if (r > RIPPLE_SPEED * life + 1) continue
+            val fade = (1 - age / life).pow(2) * size
+            for (ring in 0 until 2) {
+                val ringAge = age - ring * RIPPLE_GAP
+                if (ringAge < 0) continue
+                val width = 0.12 + 0.18 * ringAge
+                val off = (r - (0.15 + RIPPLE_SPEED * ringAge)) / width
+                glow += fade * (if (ring == 0) RIPPLE_GLOW else RIPPLE_GLOW * 0.55) * exp(-off * off)
+            }
+        }
+        add(colour.mix(Colors.WHITE, 0.65), glow)
     }
 
     /** Whether column ([offX], [offZ]) has a star right now, which is then described by the sparkle fields. */
@@ -331,6 +395,15 @@ internal class ManiaFx {
         private const val WAVE_GLOW = 0.85
         private const val WAVE_WAKE = 0.15
         private val COAL_WAVE = Color(0xFFD8D0FF.toInt())
+        private const val MAX_RIPPLES = 12
+        /** Blocks walked between ripples. */
+        private const val STEP = 1.3
+        private const val LANDING = 1.6
+        private const val RIPPLE_LIFE = 1.1
+        private const val RIPPLE_SPEED = 2.6
+        /** Seconds the second ring trails the first. */
+        private const val RIPPLE_GAP = 0.22
+        private const val RIPPLE_GLOW = 0.5
         /** Star slots per second per column; each star lasts a slot. */
         private const val GLITTER_RATE = 2.0
         /** Share of columns with a star, at rest and added just before coal. */
