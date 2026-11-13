@@ -209,6 +209,13 @@ internal class ManiaSession(
         else -> null
     }
 
+    /** Like [ticksUntilCoal], at a fractional tick for smooth animation. */
+    fun ticksUntilCoal(now: Double): Double? = when (phase) {
+        Phase.TERRACOTTA -> max(0.0, cycleStartTick + COAL_OFFSET - now)
+        Phase.REDSTONE -> max(0.0, redstoneTick + REDSTONE_DURATION - now)
+        else -> null
+    }
+
     fun processBatch(tick: Long, updates: List<ManiaUpdate>, synthetic: Boolean) {
         if (log.enabled) for (u in updates) log.file("B $tick ${u.x} ${u.y} ${u.z} ${u.type.symbol}")
 

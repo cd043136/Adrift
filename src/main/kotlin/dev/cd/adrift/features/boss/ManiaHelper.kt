@@ -30,10 +30,6 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.pow
-import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 object ManiaHelper : Module(
     "Mania",
@@ -48,11 +44,7 @@ object ManiaHelper : Module(
     private const val TEXT_HEIGHT = 9
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
-    /** The wave is about seven blocks long and passes a column roughly once a second. */
-    private const val PULSE_WAVE_NUMBER = 0.88
-    private const val PULSE_SPEED = 6.4
-    /** Outline glow strength while the pulse is off. */
-    private const val STATIC_CREST = 0.5
+    private const val TICK_NANOS = 50_000_000.0
     private const val EDGE_SAMPLES = 8
     // North and south sides sampled west then east, west and east sides sampled north then south.
     private val EDGE_SAMPLE_X = doubleArrayOf(0.25, 0.75, 0.25, 0.75, 0.12, 0.12, 0.88, 0.88)
@@ -62,7 +54,10 @@ object ManiaHelper : Module(
         "Render Radius", MAX_RENDER_RADIUS, 3..MAX_RENDER_RADIUS, 1,
         "Only draws columns this close to you; the maximum draws the whole pattern.", " blocks"
     )
-    private val pulse by bool("Colour Pulse", true, "Ripples a wave of brighter colour out from the centre of the pattern.")
+    private val style by choice(
+        "Style", ManiaStyle.PULSE,
+        "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets closer.",
+    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
@@ -101,7 +96,9 @@ object ManiaHelper : Module(
     private val surfaceCache = SurfaceCache()
     private val colours = Array(ManiaBlock.entries.size) { Colors.WHITE }
     private val contour = ManiaOutline()
-    private val pulseEpoch = System.nanoTime()
+    private val fx = ManiaFx()
+    private val epoch = System.nanoTime()
+    private var lastTickNanos = 0L
     private var debugWriter: BufferedWriter? = null
     private var debugWriterFailed = false
 
@@ -156,8 +153,9 @@ object ManiaHelper : Module(
             val greenOnly = safeOnly
             val skipMatching = onlyDifferent
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
-            val pulsing = pulse
-            val time = (System.nanoTime() - pulseEpoch) / 1.0e9
+            val now = System.nanoTime()
+            val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
+            fx.begin(style, (now - epoch) / 1.0e9, s.ticksUntilCoal(tickNow)?.div(20.0), s.phase == ManiaSession.Phase.COAL)
             val outlined = outline
             contour.begin(s.centreX, s.centreZ, s.bossY)
 
@@ -177,8 +175,8 @@ object ManiaHelper : Module(
                     val surfaces = surfaceCache.surfaces[i]
                     if (surfaces.isEmpty()) continue
                     val safe = expected == ManiaBlock.GREEN
-                    val crest = if (pulsing) pulseCrest(offX, offZ, time, safe) else STATIC_CREST
-                    val colour = colours[expected.ordinal].let { if (pulsing) pulsed(it, crest, safe) else it }
+                    val crest = fx.crest(offX, offZ, safe)
+                    val colour = fx.tint(colours[expected.ordinal], crest, safe)
                     for (surface in surfaces) {
                         if (skipMatching && surface.type == expected) continue
                         for (box in surface.tints) box(box, colour)
@@ -214,6 +212,7 @@ object ManiaHelper : Module(
     private fun onServerTick(tick: Long) {
         if (!enabled) return
         lastTick = tick
+        lastTickNanos = System.nanoTime()
         drainPending(tick)
         updateLifecycle(tick)
         val s = session ?: return
@@ -341,19 +340,6 @@ object ManiaHelper : Module(
         ManiaBlock.RED, ManiaBlock.REDSTONE -> 2
         ManiaBlock.COAL -> 1
         ManiaBlock.NONE, null -> 0
-    }
-
-    /** Strength, 0..1, of the wave travelling out from the centre at this column. The safe ring peaks sharper. */
-    private fun pulseCrest(offX: Int, offZ: Int, time: Double, safe: Boolean): Double {
-        val distance = sqrt((offX * offX + offZ * offZ).toDouble())
-        val wave = 0.5 + 0.5 * sin(distance * PULSE_WAVE_NUMBER - time * PULSE_SPEED)
-        return if (safe) wave.pow(1.75) else 0.4 + 0.35 * wave
-    }
-
-    private fun pulsed(base: Color, crest: Double, safe: Boolean): Color {
-        val hot = base.mix(Colors.WHITE, if (safe) 0.78 else 0.45)
-        val alpha = (base.alpha * (0.48 + 0.68 * crest)).roundToInt().coerceIn(0, 245)
-        return Color((alpha shl 24) or base.mix(hot, crest * if (safe) 0.65 else 0.2).rgb)
     }
 
     private fun colourFor(block: ManiaBlock): Color = when (block) {
