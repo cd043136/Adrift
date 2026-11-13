@@ -43,6 +43,12 @@ internal class ManiaFx {
     private var sweep = 0.0
     /** Where the radar hand will be when coal lands, NaN when unknown. */
     private var coalAngle = Double.NaN
+    /** Shockwaves still spreading: start time and colour, oldest replaced first. */
+    private val waveStart = DoubleArray(MAX_WAVES) { Double.NEGATIVE_INFINITY }
+    private val waveColour = IntArray(MAX_WAVES)
+    private var nextWave = 0
+    private var waveSession: ManiaSession? = null
+    private var waveKey = -1
 
     // Light being summed for one point, premultiplied by intensity.
     private var lightR = 0.0
@@ -56,6 +62,12 @@ internal class ManiaFx {
 
     /** Twinkling stars on the floor, more of them as coal gets closer. */
     var glitter = false
+
+    /** A ring of light bursts out from the centre whenever the pattern changes. */
+    var shockwaves = false
+
+    /** Tint colours by block ordinal. */
+    var colours: Array<Color> = emptyArray()
 
     /** Grid cells per block side of [ManiaLight], 0 when nothing is lit. */
     var lightDetail = 0
@@ -89,7 +101,12 @@ internal class ManiaFx {
         val cycle = session.cycleProgress(tick)
         sweep = TAU * (cycle ?: fraction(time / CYCLE_SECONDS))
         coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
-        lightDetail = if (style == ManiaStyle.RADAR || materials) 4 else 0
+        trackWaves(session)
+        lightDetail = when {
+            style == ManiaStyle.RADAR || materials -> 4
+            wavesLive() -> 2
+            else -> 0
+        }
     }
 
     /** Glow strength of the column, 0..1. The safe ring swings over the whole range, danger only around the middle. */
@@ -131,6 +148,7 @@ internal class ManiaFx {
         lightG = 0.0
         lightB = 0.0
         if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
+        if (shockwaves) shockwaveLight(u, v)
         if (materials) when (type) {
             ManiaBlock.GREEN -> caustics(u, v, colour)
             ManiaBlock.REDSTONE -> add(EMBER, EMBER_GLOW * ember(offX, offZ) * exp(-EMBER_FOCUS * sq(u - offX, v - offZ)))
@@ -138,6 +156,42 @@ internal class ManiaFx {
             else -> Unit
         }
         return packLight()
+    }
+
+    /** Starts a shockwave when the session moves to a new step or learns its safe ring. */
+    private fun trackWaves(session: ManiaSession) {
+        val key = (session.cycleIndex shl 8) or (session.phase.ordinal shl 4) or session.greenRing
+        val changed = session === waveSession && key != waveKey
+        waveSession = session
+        waveKey = key
+        if (!changed || !shockwaves) return
+        val colour = when (session.phase) {
+            ManiaSession.Phase.TERRACOTTA -> colours[ManiaBlock.GREEN.ordinal].mix(Colors.WHITE, 0.3)
+            ManiaSession.Phase.REDSTONE -> colours[ManiaBlock.REDSTONE.ordinal].mix(EMBER, 0.25)
+            ManiaSession.Phase.COAL -> COAL_WAVE
+            ManiaSession.Phase.WAITING -> return
+        }
+        waveStart[nextWave] = time
+        waveColour[nextWave] = colour.rgba
+        nextWave = (nextWave + 1) % MAX_WAVES
+    }
+
+    private fun wavesLive() = shockwaves && waveStart.any { time - it < WAVE_LIFE }
+
+    private fun shockwaveLight(u: Double, v: Double) {
+        val r = distance(u, v)
+        for (w in 0 until MAX_WAVES) {
+            val age = time - waveStart[w]
+            if (age < 0 || age >= WAVE_LIFE) continue
+            val fade = (1 - age / WAVE_LIFE).pow(2)
+            val front = WAVE_SPEED * age
+            val width = 0.6 + 1.2 * age
+            val off = (r - front) / width
+            var glow = WAVE_GLOW * exp(-off * off)
+            // A fainter wash left behind the front.
+            if (r < front) glow += WAVE_WAKE * exp(-(front - r) / 3)
+            add(Color(waveColour[w]), glow * fade)
+        }
     }
 
     /** Whether column ([offX], [offZ]) has a star right now, which is then described by the sparkle fields. */
@@ -270,6 +324,13 @@ internal class ManiaFx {
         private const val CAUSTIC = 0.32
         private val SMOKE = Color(0xFF9C90B0.toInt())
         private const val SMOKE_GLOW = 0.2
+        private const val MAX_WAVES = 4
+        private const val WAVE_LIFE = 1.0
+        /** Blocks per second; the front reaches the pattern's edge in about two thirds of a second. */
+        private const val WAVE_SPEED = 22.0
+        private const val WAVE_GLOW = 0.85
+        private const val WAVE_WAKE = 0.15
+        private val COAL_WAVE = Color(0xFFD8D0FF.toInt())
         /** Star slots per second per column; each star lasts a slot. */
         private const val GLITTER_RATE = 2.0
         /** Share of columns with a star, at rest and added just before coal. */

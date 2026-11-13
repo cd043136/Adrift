@@ -68,6 +68,9 @@ object ManiaHelper : Module(
     private val glitter by bool(
         "Glitter", false, "Stars twinkle across the floor, more and more of them as coal gets closer.",
     )
+    private val shockwaves by bool(
+        "Shockwaves", true, "A ring of light bursts out from the centre whenever the pattern changes.",
+    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
@@ -168,6 +171,8 @@ object ManiaHelper : Module(
             val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
             fx.materials = materials
             fx.glitter = glitter
+            fx.shockwaves = shockwaves
+            fx.colours = colours
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow)
             val lit = fx.lit
             light.begin()
