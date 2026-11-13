@@ -18,7 +18,8 @@ internal enum class ManiaStyle(private val label: String) {
     STATIC("Static"),
     PULSE("Pulse"),
     HEARTBEAT("Heartbeat"),
-    RADAR("Radar");
+    RADAR("Radar"),
+    DISCO("Disco");
 
     override fun toString() = label
 }
@@ -49,6 +50,8 @@ internal class ManiaFx {
     private var nextWave = 0
     private var waveSession: ManiaSession? = null
     private var waveKey = -1
+    private var coalTime = Double.NEGATIVE_INFINITY
+    val disco = ManiaDisco()
     /** Ripples from steps: centre, start time and strength, oldest replaced first. */
     private val rippleU = DoubleArray(MAX_RIPPLES)
     private val rippleV = DoubleArray(MAX_RIPPLES)
@@ -129,10 +132,11 @@ internal class ManiaFx {
         coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
         trackWaves(session)
         trackSteps(playerU, playerV, onGround)
+        if (style == ManiaStyle.DISCO) disco.begin(time, time - coalTime)
         this.playerU = playerU
         this.playerV = playerV
         lightDetail = when {
-            style == ManiaStyle.RADAR || materials || ripplesLive() -> 4
+            style == ManiaStyle.RADAR || style == ManiaStyle.DISCO || materials || ripplesLive() -> 4
             wavesLive() || lamp -> 2
             else -> 0
         }
@@ -149,6 +153,7 @@ internal class ManiaFx {
             val beat = heartbeat(fraction(beats - distance(offX, offZ) * HEART_LAG))
             if (safe) beat else 0.35 + 0.5 * beat
         }
+        ManiaStyle.DISCO -> disco.crest(offX, offZ, safe)
         ManiaStyle.RADAR -> {
             val trail = exp(-behindSweep(offX.toDouble(), offZ.toDouble()) * RADAR_FADE)
             if (safe) 0.15 + 0.85 * trail else 0.35 + 0.5 * trail
@@ -186,6 +191,7 @@ internal class ManiaFx {
         lightG = 0.0
         lightB = 0.0
         if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
+        if (style == ManiaStyle.DISCO) disco.light(u, v, this)
         if (shockwaves) shockwaveLight(u, v)
         if (ripples) rippleLight(u, v, colour)
         if (lamp) add(colour.mix(Colors.WHITE, 0.5), LAMP_GLOW * exp(-sq(u - playerU, v - playerV) / (2 * LAMP_POOL * LAMP_POOL)))
@@ -204,6 +210,7 @@ internal class ManiaFx {
         val changed = session === waveSession && key != waveKey
         waveSession = session
         waveKey = key
+        if (changed && session.phase == ManiaSession.Phase.COAL) coalTime = time
         if (!changed || !shockwaves) return
         val colour = when (session.phase) {
             ManiaSession.Phase.TERRACOTTA -> colours[ManiaBlock.GREEN.ordinal].mix(Colors.WHITE, 0.3)
@@ -384,7 +391,7 @@ internal class ManiaFx {
         return behind - TAU * floor(behind / TAU)
     }
 
-    private fun add(colour: Color, amount: Double) {
+    fun add(colour: Color, amount: Double) {
         if (amount <= 0.0) return
         lightR += colour.redFloat * amount
         lightG += colour.greenFloat * amount
@@ -417,7 +424,7 @@ internal class ManiaFx {
         /** Terracotta and redstone together, the longest coal is ever away. */
         private const val FULL_WARNING = 2.25
         private const val CYCLE_SECONDS = 3.25
-        private const val TAU = 2 * PI
+        const val TAU = 2 * PI
         /** How fast the floor dims behind the radar hand, per radian. */
         private const val RADAR_FADE = 1.6
         private const val RADAR_BEAM = 0.55

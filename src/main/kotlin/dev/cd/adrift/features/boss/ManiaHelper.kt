@@ -10,6 +10,7 @@ import dev.cd.adrift.utils.Colors
 import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.SlayerUtils
 import dev.cd.adrift.utils.modMessage
+import dev.cd.adrift.utils.render.cameraPos
 import dev.cd.adrift.utils.render.glow
 import dev.cd.adrift.utils.render.lines
 import dev.cd.adrift.utils.render.quads
@@ -59,8 +60,11 @@ object ManiaHelper : Module(
     private val style by choice(
         "Style", ManiaStyle.PULSE,
         "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets " +
-            "closer; Radar sweeps a hand round once per cycle, past a mark where coal lands.",
+            "closer; Radar sweeps a hand round once per cycle, past a mark where coal lands; Disco throws spots, " +
+            "lasers and flashing tiles across the floor to a beat, with a strobe when coal hits.",
     )
+    private val mirrorBall by bool("Mirror Ball", true, "Hangs a spinning mirror ball over the boss, beaming the disco spots down.")
+        .showIf { style == ManiaStyle.DISCO }
     private val materials by bool(
         "Material Effects", true,
         "Gives each block its own look: redstone smoulders and flares like embers, smoke drifts over coal and light " +
@@ -234,10 +238,16 @@ object ManiaHelper : Module(
                 }
             }
             val curtainLit = fx.curtain && !contour.isEmpty
-            if (!light.isEmpty || curtainLit) glow {
-                light.draw(this, fx, s.centreX + 0.5, s.centreZ + 0.5)
+            val ball = fx.style == ManiaStyle.DISCO && mirrorBall
+            val middleX = s.centreX + 0.5
+            val middleZ = s.centreZ + 0.5
+            if (ball) quads(depth = true) { fx.disco.ball(this, middleX, s.bossY, middleZ, cameraPos) }
+            if (!light.isEmpty || curtainLit || ball) glow {
+                light.draw(this, fx, middleX, middleZ)
                 if (curtainLit) contour.curtain(this, fx, colours[ManiaBlock.GREEN.ordinal].mix(CURTAIN_TINT, 0.5))
+                if (ball) fx.disco.beams(this, middleX, s.bossY, middleZ, cameraPos)
             }
+            if (ball) lines { fx.disco.chain(this, middleX, s.bossY, middleZ) }
             if (outlined && !contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
         }
     }

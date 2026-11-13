@@ -161,7 +161,7 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
 private val scratchQuads = GeometryBatch(lines = false)
 private val scratchLines = GeometryBatch(lines = true)
 
-private val cameraPos: Vec3
+internal val cameraPos: Vec3
     //? if >=26.2 {
     get() = mc.gameRenderer.mainCamera().position()
     //?} else
