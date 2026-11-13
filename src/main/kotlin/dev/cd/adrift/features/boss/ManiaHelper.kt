@@ -74,6 +74,9 @@ object ManiaHelper : Module(
     private val ripples by bool(
         "Footstep Ripples", false, "Rings spread over the floor from your steps, like walking on water; landing makes a big one.",
     )
+    private val lamp by bool(
+        "Proximity Lamp", false, "The floor around you is brighter and lit by a soft pool of light; far away it fades back.",
+    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
@@ -176,6 +179,7 @@ object ManiaHelper : Module(
             fx.glitter = glitter
             fx.shockwaves = shockwaves
             fx.ripples = ripples
+            fx.lamp = lamp
             fx.colours = colours
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow, fromCentreX, fromCentreZ, player.onGround())
             val lit = fx.lit

@@ -58,6 +58,8 @@ internal class ManiaFx {
     private var stepU = Double.NaN
     private var stepV = Double.NaN
     private var wasOnGround = true
+    private var playerU = 0.0
+    private var playerV = 0.0
 
     // Light being summed for one point, premultiplied by intensity.
     private var lightR = 0.0
@@ -77,6 +79,9 @@ internal class ManiaFx {
 
     /** Rings spread over the floor from your steps, like walking on water. */
     var ripples = false
+
+    /** The floor near you is brighter and lit by a soft pool of light; far away it fades back. */
+    var lamp = false
 
     /** Tint colours by block ordinal. */
     var colours: Array<Color> = emptyArray()
@@ -118,9 +123,11 @@ internal class ManiaFx {
         coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
         trackWaves(session)
         trackSteps(playerU, playerV, onGround)
+        this.playerU = playerU
+        this.playerV = playerV
         lightDetail = when {
             style == ManiaStyle.RADAR || materials || ripplesLive() -> 4
-            wavesLive() -> 2
+            wavesLive() || lamp -> 2
             else -> 0
         }
     }
@@ -152,7 +159,16 @@ internal class ManiaFx {
             colour = Color((alpha shl 24) or base.mix(hot, crest * if (safe) 0.65 else 0.2).rgb)
         }
         if (materials && type == ManiaBlock.REDSTONE) colour = smoulder(colour, offX, offZ)
+        if (lamp) colour = lamplit(colour, offX, offZ)
         return colour
+    }
+
+    private fun lamplit(colour: Color, offX: Int, offZ: Int): Color {
+        val d2 = sq(offX - playerU, offZ - playerV)
+        val near = exp(-d2 / (2 * LAMP_REACH * LAMP_REACH))
+        val far = smoothstep(LAMP_FADE_START, LAMP_FADE_END, sqrt(d2))
+        val alpha = (colour.alpha * (1 - 0.45 * far) * (1 + 0.3 * near)).roundToInt().coerceIn(0, 245)
+        return Color((alpha shl 24) or colour.mix(Colors.WHITE, 0.2 * near).rgb)
     }
 
     /**
@@ -166,6 +182,7 @@ internal class ManiaFx {
         if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
         if (shockwaves) shockwaveLight(u, v)
         if (ripples) rippleLight(u, v, colour)
+        if (lamp) add(colour.mix(Colors.WHITE, 0.5), LAMP_GLOW * exp(-sq(u - playerU, v - playerV) / (2 * LAMP_POOL * LAMP_POOL)))
         if (materials) when (type) {
             ManiaBlock.GREEN -> caustics(u, v, colour)
             ManiaBlock.REDSTONE -> add(EMBER, EMBER_GLOW * ember(offX, offZ) * exp(-EMBER_FOCUS * sq(u - offX, v - offZ)))
@@ -404,6 +421,12 @@ internal class ManiaFx {
         /** Seconds the second ring trails the first. */
         private const val RIPPLE_GAP = 0.22
         private const val RIPPLE_GLOW = 0.5
+        /** Blocks: how far the brighter floor reaches, the pool of light's size, and where the far floor fades. */
+        private const val LAMP_REACH = 2.2
+        private const val LAMP_POOL = 1.5
+        private const val LAMP_FADE_START = 4.0
+        private const val LAMP_FADE_END = 10.0
+        private const val LAMP_GLOW = 0.25
         /** Star slots per second per column; each star lasts a slot. */
         private const val GLITTER_RATE = 2.0
         /** Share of columns with a star, at rest and added just before coal. */
