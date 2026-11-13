@@ -10,6 +10,7 @@ import dev.cd.adrift.utils.Colors
 import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.SlayerUtils
 import dev.cd.adrift.utils.modMessage
+import dev.cd.adrift.utils.render.glow
 import dev.cd.adrift.utils.render.lines
 import dev.cd.adrift.utils.render.quads
 import net.fabricmc.loader.api.FabricLoader
@@ -56,7 +57,8 @@ object ManiaHelper : Module(
     )
     private val style by choice(
         "Style", ManiaStyle.PULSE,
-        "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets closer.",
+        "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets " +
+            "closer; Radar sweeps a hand round once per cycle, past a mark where coal lands.",
     )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
@@ -97,6 +99,7 @@ object ManiaHelper : Module(
     private val colours = Array(ManiaBlock.entries.size) { Colors.WHITE }
     private val contour = ManiaOutline()
     private val fx = ManiaFx()
+    private val light = ManiaLight()
     private val epoch = System.nanoTime()
     private var lastTickNanos = 0L
     private var debugWriter: BufferedWriter? = null
@@ -155,7 +158,9 @@ object ManiaHelper : Module(
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
             val now = System.nanoTime()
             val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
-            fx.begin(style, (now - epoch) / 1.0e9, s.ticksUntilCoal(tickNow)?.div(20.0), s.phase == ManiaSession.Phase.COAL)
+            fx.begin(style, (now - epoch) / 1.0e9, s, tickNow)
+            val lit = fx.lightDetail > 0
+            light.begin()
             val outlined = outline
             contour.begin(s.centreX, s.centreZ, s.bossY)
 
@@ -179,7 +184,10 @@ object ManiaHelper : Module(
                     val colour = fx.tint(colours[expected.ordinal], crest, safe)
                     for (surface in surfaces) {
                         if (skipMatching && surface.type == expected) continue
-                        for (box in surface.tints) box(box, colour)
+                        for (box in surface.tints) {
+                            box(box, colour)
+                            if (lit) light.face(box, expected, colour)
+                        }
                     }
                     if (!outlined) continue
                     for (side in 0 until 4) {
@@ -193,6 +201,7 @@ object ManiaHelper : Module(
                     }
                 }
             }
+            if (!light.isEmpty) glow { light.draw(this, fx, s.centreX + 0.5, s.centreZ + 0.5) }
             if (!contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours) }
         }
     }

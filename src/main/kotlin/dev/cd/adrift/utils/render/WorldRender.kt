@@ -71,6 +71,20 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
         put(x3, y3, z3, c)
     }
 
+    /** A quad with its own `0xAARRGGBB` colour per corner, blended across it. */
+    fun shadedQuad(
+        x0: Double, y0: Double, z0: Double, c0: Int,
+        x1: Double, y1: Double, z1: Double, c1: Int,
+        x2: Double, y2: Double, z2: Double, c2: Int,
+        x3: Double, y3: Double, z3: Double, c3: Int,
+    ) {
+        check(!lines)
+        put(x0, y0, z0, c0)
+        put(x1, y1, z1, c1)
+        put(x2, y2, z2, c2)
+        put(x3, y3, z3, c3)
+    }
+
     fun box(aabb: AABB, color: Color) {
         val (x0, y0, z0) = Triple(aabb.minX, aabb.minY, aabb.minZ)
         val (x1, y1, z1) = Triple(aabb.maxX, aabb.maxY, aabb.maxZ)
@@ -168,6 +182,13 @@ fun RenderWorldEvent.quads(depth: Boolean, build: GeometryBatch.() -> Unit) {
     scratchQuads.begin(cameraPos)
     scratchQuads.build()
     submit(if (depth) AdriftRenderTypes.FILL else AdriftRenderTypes.FILL_ESP, scratchQuads)
+}
+
+/** Additive quads, hidden behind blocks: each adds its colour, scaled by its alpha, to what's behind it. */
+fun RenderWorldEvent.glow(build: GeometryBatch.() -> Unit) {
+    scratchQuads.begin(cameraPos)
+    scratchQuads.build()
+    submit(AdriftRenderTypes.GLOW, scratchQuads)
 }
 
 /** Depth-tested lines. */

@@ -28,15 +28,15 @@ import net.minecraft.resources.Identifier
 
 /**
  * Flat-coloured translucent quads for world highlights: [FILL] is hidden behind blocks, [FILL_ESP] shows through
- * them. Neither writes depth, so overlapping highlights blend instead of cutting each other out. Lives in this
- * package for [RenderType.create].
+ * them, and [GLOW] adds light (colour scaled by alpha) to whatever is behind it. None writes depth, so overlapping
+ * highlights blend instead of cutting each other out. Lives in this package for [RenderType.create].
  */
 object AdriftRenderTypes {
-    private fun fill(name: String, depthTest: CompareOp): RenderPipeline = RenderPipelines.register(
+    private fun fill(name: String, depthTest: CompareOp, blend: BlendFunction = BlendFunction.TRANSLUCENT): RenderPipeline = RenderPipelines.register(
         RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("adrift", "pipeline/$name"))
             .withDepthStencilState(DepthStencilState(depthTest, false))
-            .withColorTargetState(ColorTargetState(BlendFunction.TRANSLUCENT))
+            .withColorTargetState(ColorTargetState(blend))
             .withCull(false)
             //? if >=26.2 {
             .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
@@ -48,6 +48,7 @@ object AdriftRenderTypes {
 
     private val FILL_PIPELINE = fill("fill", DepthStencilState.DEFAULT.depthTest())
     private val FILL_ESP_PIPELINE = fill("fill_esp", CompareOp.ALWAYS_PASS)
+    private val GLOW_PIPELINE = fill("glow", DepthStencilState.DEFAULT.depthTest(), BlendFunction.LIGHTNING)
 
     @JvmField
     val FILL: RenderType = RenderType.create(
@@ -62,5 +63,11 @@ object AdriftRenderTypes {
     val FILL_ESP: RenderType = RenderType.create(
         "adrift_fill_esp",
         RenderSetup.builder(FILL_ESP_PIPELINE).sortOnUpload().createRenderSetup()
+    )
+
+    @JvmField
+    val GLOW: RenderType = RenderType.create(
+        "adrift_glow",
+        RenderSetup.builder(GLOW_PIPELINE).setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING).createRenderSetup()
     )
 }

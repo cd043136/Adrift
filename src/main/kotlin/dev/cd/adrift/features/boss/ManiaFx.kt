@@ -2,8 +2,12 @@ package dev.cd.adrift.features.boss
 
 import dev.cd.adrift.utils.Color
 import dev.cd.adrift.utils.Colors
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -13,7 +17,8 @@ import kotlin.math.sqrt
 internal enum class ManiaStyle(private val label: String) {
     STATIC("Static"),
     PULSE("Pulse"),
-    HEARTBEAT("Heartbeat");
+    HEARTBEAT("Heartbeat"),
+    RADAR("Radar");
 
     override fun toString() = label
 }
@@ -34,17 +39,35 @@ internal class ManiaFx {
     private var lastTime = Double.NaN
     /** Heartbeats so far; the rate changes, so this is integrated rather than derived from [time]. */
     private var beats = 0.0
+    /** Radar hand, radians clockwise from north. */
+    private var sweep = 0.0
+    /** Where the radar hand will be when coal lands, NaN when unknown. */
+    private var coalAngle = Double.NaN
+
+    // Light being summed for one point, premultiplied by intensity.
+    private var lightR = 0.0
+    private var lightG = 0.0
+    private var lightB = 0.0
 
     val animated get() = style != ManiaStyle.STATIC
 
-    fun begin(style: ManiaStyle, time: Double, untilCoal: Double?, coal: Boolean) {
+    /** Grid cells per block side of [ManiaLight], 0 when nothing is lit. */
+    var lightDetail = 0
+        private set
+
+    /** [tick]: the server tick, fractional for frames between ticks. */
+    fun begin(style: ManiaStyle, time: Double, session: ManiaSession, tick: Double) {
         val dt = if (lastTime.isNaN()) 0.0 else (time - lastTime).coerceIn(0.0, MAX_FRAME)
         lastTime = time
         this.style = style
         this.time = time
-        this.untilCoal = untilCoal ?: Double.NaN
-        this.coal = coal
+        untilCoal = session.ticksUntilCoal(tick)?.div(20.0) ?: Double.NaN
+        coal = session.phase == ManiaSession.Phase.COAL
         beats += dt * heartRate()
+        val cycle = session.cycleProgress(tick)
+        sweep = TAU * (cycle ?: fraction(time / CYCLE_SECONDS))
+        coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
+        lightDetail = if (style == ManiaStyle.RADAR) 4 else 0
     }
 
     /** Glow strength of the column, 0..1. The safe ring swings over the whole range, danger only around the middle. */
@@ -58,6 +81,10 @@ internal class ManiaFx {
             val beat = heartbeat(fraction(beats - distance(offX, offZ) * HEART_LAG))
             if (safe) beat else 0.35 + 0.5 * beat
         }
+        ManiaStyle.RADAR -> {
+            val trail = exp(-behindSweep(offX.toDouble(), offZ.toDouble()) * RADAR_FADE)
+            if (safe) 0.15 + 0.85 * trail else 0.35 + 0.5 * trail
+        }
     }
 
     /** [base] lit to [crest]. */
@@ -68,6 +95,18 @@ internal class ManiaFx {
         return Color((alpha shl 24) or base.mix(hot, crest * if (safe) 0.65 else 0.2).rgb)
     }
 
+    /**
+     * Light added on top of the tint at ([u], [v]) on a column of [type] tinted [colour], as `0xAARRGGBB` for an
+     * additive blend: colour scaled by alpha. 0 for none.
+     */
+    fun light(u: Double, v: Double, type: ManiaBlock, colour: Color): Int {
+        lightR = 0.0
+        lightG = 0.0
+        lightB = 0.0
+        if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
+        return packLight()
+    }
+
     /** Coal getting closer, 0 (a whole terracotta step away, or unknown) to 1 (now). */
     fun urgency(): Double = if (untilCoal.isNaN()) 0.0 else (1 - untilCoal / FULL_WARNING).coerceIn(0.0, 1.0)
 
@@ -75,6 +114,44 @@ internal class ManiaFx {
         coal -> RESTING_RATE * 0.8
         untilCoal.isNaN() -> RESTING_RATE
         else -> RESTING_RATE + RACING_RATE * urgency().pow(2)
+    }
+
+    private fun radarLight(u: Double, v: Double, colour: Color) {
+        val r = distance(u, v)
+        if (r < 0.5) return
+        val near = ((r - 0.5) / 1.5).coerceAtMost(1.0)
+        // The trail is about as long on every ring, so the hand reads as one straight line.
+        add(colour.mix(Colors.WHITE, 0.5), RADAR_BEAM * near * exp(-behindSweep(u, v) * r * RADAR_TRAIL))
+        if (coalAngle.isNaN()) return
+        var off = angleOf(u, v) - coalAngle
+        off -= TAU * floor((off + PI) / TAU)
+        if (abs(off) > PI / 2) return
+        val across = r * abs(sin(off)) / COAL_MARK_WIDTH
+        add(COAL_MARK, near * (0.25 + 0.5 * urgency()) * exp(-across * across))
+    }
+
+    /** Radians from the radar hand back to ([u], [v]): 0 just behind it, up to 2π just ahead. */
+    private fun behindSweep(u: Double, v: Double): Double {
+        val behind = sweep - angleOf(u, v)
+        return behind - TAU * floor(behind / TAU)
+    }
+
+    private fun add(colour: Color, amount: Double) {
+        if (amount <= 0.0) return
+        lightR += colour.redFloat * amount
+        lightG += colour.greenFloat * amount
+        lightB += colour.blueFloat * amount
+    }
+
+    /** The summed light as a colour with its strength in alpha, so an additive blend adds exactly the sum. */
+    private fun packLight(): Int {
+        val strength = max(lightR, max(lightG, lightB))
+        if (strength < 1.0 / 255) return 0
+        val a = (strength.coerceAtMost(1.0) * 255).roundToInt()
+        val r = (lightR / strength * 255).roundToInt()
+        val g = (lightG / strength * 255).roundToInt()
+        val b = (lightB / strength * 255).roundToInt()
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     companion object {
@@ -91,10 +168,25 @@ internal class ManiaFx {
         private const val HEART_LAG = 0.025
         /** Terracotta and redstone together, the longest coal is ever away. */
         private const val FULL_WARNING = 2.25
+        private const val CYCLE_SECONDS = 3.25
+        private const val TAU = 2 * PI
+        /** How fast the floor dims behind the radar hand, per radian. */
+        private const val RADAR_FADE = 1.6
+        private const val RADAR_BEAM = 0.55
+        /** How fast the beam's trail fades, per block of arc. */
+        private const val RADAR_TRAIL = 0.45
+        private const val COAL_MARK_WIDTH = 0.16
+        private val COAL_MARK = Color(0xFFFFE6C8.toInt())
 
         fun distance(x: Double, z: Double) = sqrt(x * x + z * z)
         fun distance(x: Int, z: Int) = sqrt((x * x + z * z).toDouble())
         fun fraction(x: Double) = x - floor(x)
+
+        /** Radians clockwise from north (-z) seen from above, 0 until 2π. */
+        fun angleOf(u: Double, v: Double): Double {
+            val a = atan2(u, -v)
+            return if (a < 0) a + TAU else a
+        }
 
         /** Lub-dub: a strong thump at the start of the beat and a softer one just after, 0..1. */
         private fun heartbeat(p: Double): Double {
