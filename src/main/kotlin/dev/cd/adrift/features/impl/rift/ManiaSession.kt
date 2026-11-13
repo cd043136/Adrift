@@ -13,6 +13,7 @@ import dev.cd.adrift.features.impl.rift.ManiaGeometry.isRing
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetBand
 import dev.cd.adrift.features.impl.rift.ManiaGeometry.offsetCount
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import kotlin.math.abs
@@ -175,6 +176,7 @@ internal class ManiaSession(
     private val seenType = arrayOfNulls<ManiaBlock>(offsetCount)
     private val conflictStamp = IntArray(offsetCount)
     private val batchOffsets = IntArrayList()
+    private val lastAtPos = Long2IntOpenHashMap()
     private var batchStamp = 0
     private val foreignCounts = IntArray(GROUP_NONE + 1)
     private val filtered = ArrayList<ManiaUpdate>()
@@ -321,10 +323,16 @@ internal class ManiaSession(
         coals.clear()
         batchOffsets.clear()
         batchStamp++
-        for (u in batch) {
+        // The server can reset a block to floor and set it again in the same tick (floor reset under a new step): that
+        // reset is superseded and must not count as a conflict. Two mania blocks on one block still conflict.
+        lastAtPos.clear()
+        for (j in batch.indices) lastAtPos.put(packPos(batch[j]), j)
+        for (j in batch.indices) {
+            val u = batch[j]
             val i = ManiaGeometry.offsetIndex(u.x - centreX, u.z - centreZ)
-            batchOffsets.add(i)
-            if (i < 0) continue
+            val superseded = u.type == ManiaBlock.NONE && lastAtPos.get(packPos(u)) != j
+            batchOffsets.add(if (superseded) -1 else i)
+            if (batchOffsets.getInt(j) < 0) continue
             if (seenStamp[i] != batchStamp) {
                 seenStamp[i] = batchStamp
                 seenType[i] = u.type
@@ -735,5 +743,8 @@ internal class ManiaSession(
         const val MIN_STAGE_COVERAGE = 0.3
 
         fun packColumn(x: Int, z: Int): Long = (x.toLong() shl 32) or (z.toLong() and 0xFFFFFFFFL)
+
+        fun packPos(u: ManiaUpdate): Long =
+            ((u.x.toLong() and 0x3FFFFFF) shl 38) or ((u.z.toLong() and 0x3FFFFFF) shl 12) or (u.y.toLong() and 0xFFF)
     }
 }
