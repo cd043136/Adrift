@@ -98,6 +98,43 @@ internal class ManiaOutline {
         }
     }
 
+    /**
+     * A shimmering curtain of light rising off the safe ring's outline, in [colour]: additive quads, so draw it into a
+     * glow batch. Steps are left out; only the level runs of the outline rise.
+     */
+    fun curtain(batch: GeometryBatch, fx: ManiaFx, colour: Color) {
+        val rgb = colour.rgb
+        for (i in 0 until segmentCount) {
+            if ((styles[i] shr 8) and 7 != ManiaBlock.GREEN.ordinal) continue
+            val o = i * 6
+            val x0 = segments[o]
+            val y = segments[o + 1]
+            val z0 = segments[o + 2]
+            val x1 = segments[o + 3]
+            val z1 = segments[o + 5]
+            if (x0 == x1 && z0 == z1) continue
+            val u0 = x0 - originX - 0.5
+            val v0 = z0 - originZ - 0.5
+            val u1 = x1 - originX - 0.5
+            val v1 = z1 - originZ - 0.5
+            var low0 = glow(fx, u0, v0, 0.0, rgb)
+            var low1 = glow(fx, u1, v1, 0.0, rgb)
+            for (k in 1..CURTAIN_SLICES) {
+                val f = k.toDouble() / CURTAIN_SLICES
+                val high0 = glow(fx, u0, v0, f, rgb)
+                val high1 = glow(fx, u1, v1, f, rgb)
+                val bottom = y + (k - 1) * CURTAIN_HEIGHT / CURTAIN_SLICES
+                val top = y + k * CURTAIN_HEIGHT / CURTAIN_SLICES
+                batch.shadedQuad(x0, bottom, z0, low0, x1, bottom, z1, low1, x1, top, z1, high1, x0, top, z0, high0)
+                low0 = high0
+                low1 = high1
+            }
+        }
+    }
+
+    private fun glow(fx: ManiaFx, u: Double, v: Double, height: Double, rgb: Int): Int =
+        ((fx.curtainGlow(u, v, height) * 255).roundToInt().coerceIn(0, 255) shl 24) or rgb
+
     private fun closeJoints() {
         joints.sort(0, jointCount)
         for (i in 1 until jointCount) {
@@ -183,6 +220,8 @@ internal class ManiaOutline {
         /** Above the block tint, which sits 0.002 off the block. */
         private const val LIFT = 0.01
         private const val LAYER_LIFT = 0.0022
+        private const val CURTAIN_HEIGHT = 1.3
+        private const val CURTAIN_SLICES = 5
         private const val STEP_EPSILON = 0.02
 
         private const val Y_SCALE = 1024

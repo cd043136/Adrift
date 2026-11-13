@@ -46,6 +46,7 @@ object ManiaHelper : Module(
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
     private const val TICK_NANOS = 50_000_000.0
+    private val CURTAIN_TINT = Color(0xFFE2FFF5.toInt())
     private const val EDGE_SAMPLES = 8
     // North and south sides sampled west then east, west and east sides sampled north then south.
     private val EDGE_SAMPLE_X = doubleArrayOf(0.25, 0.75, 0.25, 0.75, 0.12, 0.12, 0.88, 0.88)
@@ -82,6 +83,7 @@ object ManiaHelper : Module(
         .showIf { outline }
     private val marquee by bool("Marquee", false, "Lights chase round the outline like marquee bulbs, neighbouring rings in turn.")
         .showIf { outline }
+    private val curtain by bool("Light Curtain", false, "A shimmering curtain of light rises off the edges of the safe ring.")
     private val safeOnly by bool("Safe Only", false, "Only draws the safe (green) ring.")
     private val onlyDifferent by bool("Only Where Different", false, "Skips columns where the real block already shows the right mania block.")
     private val safeColour by color("Safe Colour", Color("55ff5599"), "Safe ring colour.")
@@ -183,11 +185,13 @@ object ManiaHelper : Module(
             fx.ripples = ripples
             fx.lamp = lamp
             fx.marquee = outline && marquee
+            fx.curtain = curtain
             fx.colours = colours
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow, fromCentreX, fromCentreZ, player.onGround())
             val lit = fx.lit
             light.begin()
             val outlined = outline
+            val traced = outlined || fx.curtain
             contour.begin(s.centreX, s.centreZ, s.bossY)
 
             // One batch for the whole pattern instead of a draw per block
@@ -215,7 +219,7 @@ object ManiaHelper : Module(
                             if (lit) light.face(box, offX, offZ, expected, colour)
                         }
                     }
-                    if (!outlined) continue
+                    if (!traced) continue
                     for (side in 0 until 4) {
                         val j = ManiaGeometry.offsetIndex(offX + ManiaOutline.SIDE_DX[side], offZ + ManiaOutline.SIDE_DZ[side])
                         val beyondBand = if (j >= 0) ManiaGeometry.offsetBand[j] else ManiaGeometry.OUTSIDE
@@ -229,8 +233,12 @@ object ManiaHelper : Module(
                     }
                 }
             }
-            if (!light.isEmpty) glow { light.draw(this, fx, s.centreX + 0.5, s.centreZ + 0.5) }
-            if (!contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
+            val curtainLit = fx.curtain && !contour.isEmpty
+            if (!light.isEmpty || curtainLit) glow {
+                light.draw(this, fx, s.centreX + 0.5, s.centreZ + 0.5)
+                if (curtainLit) contour.curtain(this, fx, colours[ManiaBlock.GREEN.ordinal].mix(CURTAIN_TINT, 0.5))
+            }
+            if (outlined && !contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
         }
     }
 

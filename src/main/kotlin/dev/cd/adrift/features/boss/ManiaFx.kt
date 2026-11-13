@@ -86,6 +86,9 @@ internal class ManiaFx {
     /** Lights chase round the outline of each ring like marquee bulbs, neighbouring rings in turn. */
     var marquee = false
 
+    /** A shimmering curtain of light rises off the safe ring's outline. */
+    var curtain = false
+
     /** Tint colours by block ordinal. */
     var colours: Array<Color> = emptyArray()
 
@@ -290,6 +293,17 @@ internal class ManiaFx {
         return smoothstep(0.0, 0.08, phase) * (1 - smoothstep(0.32, 0.46, phase))
     }
 
+    /**
+     * Strength, 0..1, of the light curtain at ([u], [v]) on the outline, [height] of the way up. Brightest at the
+     * floor, with bands rising through it and a shimmer travelling round the ring.
+     */
+    fun curtainGlow(u: Double, v: Double, height: Double): Double {
+        val angle = angleOf(u, v)
+        val shimmer = 0.55 + 0.45 * sin(angle * 12 + time * 1.7) * sin(angle * 7 - time * 1.1)
+        val rise = 0.6 + 0.4 * sin(height * 9 - time * 5 + angle * 5)
+        return CURTAIN_GLOW * (1 - height).pow(1.6) * shimmer * rise
+    }
+
     /** Whether column ([offX], [offZ]) has a star right now, which is then described by the sparkle fields. */
     fun sparkle(offX: Int, offZ: Int): Boolean {
         if (!glitter) return false
@@ -446,6 +460,7 @@ internal class ManiaFx {
         private val MARQUEE_RADIUS = doubleArrayOf(1.9, 5.0, 7.8, 10.4, 13.0, 14.5)
         private const val MARQUEE_SPACING = 2.2
         private const val MARQUEE_RATE = 2.2
+        private const val CURTAIN_GLOW = 0.55
         /** Star slots per second per column; each star lasts a slot. */
         private const val GLITTER_RATE = 2.0
         /** Share of columns with a star, at rest and added just before coal. */
