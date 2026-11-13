@@ -83,6 +83,9 @@ internal class ManiaFx {
     /** The floor near you is brighter and lit by a soft pool of light; far away it fades back. */
     var lamp = false
 
+    /** Lights chase round the outline of each ring like marquee bulbs, neighbouring rings in turn. */
+    var marquee = false
+
     /** Tint colours by block ordinal. */
     var colours: Array<Color> = emptyArray()
 
@@ -275,6 +278,18 @@ internal class ManiaFx {
         add(colour.mix(Colors.WHITE, 0.65), glow)
     }
 
+    /**
+     * Marquee brightness, 0..1, of the outline at ([u], [v]) on the edge just outside band [boundary]. Each edge ring
+     * holds a whole number of bulbs so the chase has no seam.
+     */
+    fun bulb(u: Double, v: Double, boundary: Int): Double {
+        val radius = MARQUEE_RADIUS[boundary.coerceIn(0, MARQUEE_RADIUS.lastIndex)]
+        val bulbs = maxOf(4.0, Math.round(TAU * radius / MARQUEE_SPACING).toDouble())
+        val direction = if (boundary % 2 == 0) 1 else -1
+        val phase = fraction(angleOf(u, v) / TAU * bulbs - direction * time * MARQUEE_RATE)
+        return smoothstep(0.0, 0.08, phase) * (1 - smoothstep(0.32, 0.46, phase))
+    }
+
     /** Whether column ([offX], [offZ]) has a star right now, which is then described by the sparkle fields. */
     fun sparkle(offX: Int, offZ: Int): Boolean {
         if (!glitter) return false
@@ -427,6 +442,10 @@ internal class ManiaFx {
         private const val LAMP_FADE_START = 4.0
         private const val LAMP_FADE_END = 10.0
         private const val LAMP_GLOW = 0.25
+        /** Rough radius of the edge outside each band, the blocks between bulbs, and bulbs passing a point per second. */
+        private val MARQUEE_RADIUS = doubleArrayOf(1.9, 5.0, 7.8, 10.4, 13.0, 14.5)
+        private const val MARQUEE_SPACING = 2.2
+        private const val MARQUEE_RATE = 2.2
         /** Star slots per second per column; each star lasts a slot. */
         private const val GLITTER_RATE = 2.0
         /** Share of columns with a star, at rest and added just before coal. */

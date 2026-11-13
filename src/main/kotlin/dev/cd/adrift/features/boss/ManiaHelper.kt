@@ -80,6 +80,8 @@ object ManiaHelper : Module(
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
+    private val marquee by bool("Marquee", false, "Lights chase round the outline like marquee bulbs, neighbouring rings in turn.")
+        .showIf { outline }
     private val safeOnly by bool("Safe Only", false, "Only draws the safe (green) ring.")
     private val onlyDifferent by bool("Only Where Different", false, "Skips columns where the real block already shows the right mania block.")
     private val safeColour by color("Safe Colour", Color("55ff5599"), "Safe ring colour.")
@@ -180,6 +182,7 @@ object ManiaHelper : Module(
             fx.shockwaves = shockwaves
             fx.ripples = ripples
             fx.lamp = lamp
+            fx.marquee = outline && marquee
             fx.colours = colours
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow, fromCentreX, fromCentreZ, player.onGround())
             val lit = fx.lit
@@ -215,17 +218,19 @@ object ManiaHelper : Module(
                     if (!outlined) continue
                     for (side in 0 until 4) {
                         val j = ManiaGeometry.offsetIndex(offX + ManiaOutline.SIDE_DX[side], offZ + ManiaOutline.SIDE_DZ[side])
-                        val beyond = if (j >= 0) s.expectedBlock(ManiaGeometry.offsetBand[j]) else null
+                        val beyondBand = if (j >= 0) ManiaGeometry.offsetBand[j] else ManiaGeometry.OUTSIDE
+                        val beyond = if (j >= 0) s.expectedBlock(beyondBand) else null
                         if (zoneRank(expected) <= zoneRank(beyond)) continue
+                        val boundary = minOf(ManiaGeometry.offsetBand[i], beyondBand)
                         for (surface in surfaces) {
                             if (skipMatching && surface.type == expected) continue
-                            contour.edge(offX, offZ, side, surface.edges, expected, crest)
+                            contour.edge(offX, offZ, side, surface.edges, expected, crest, boundary)
                         }
                     }
                 }
             }
             if (!light.isEmpty) glow { light.draw(this, fx, s.centreX + 0.5, s.centreZ + 0.5) }
-            if (!contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours) }
+            if (!contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
         }
     }
 
