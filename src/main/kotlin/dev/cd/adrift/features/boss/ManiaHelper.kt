@@ -60,6 +60,11 @@ object ManiaHelper : Module(
         "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets " +
             "closer; Radar sweeps a hand round once per cycle, past a mark where coal lands.",
     )
+    private val materials by bool(
+        "Material Effects", true,
+        "Gives each block its own look: redstone smoulders and flares like embers, smoke drifts over coal and light " +
+            "ripples across the safe ring like sun through water.",
+    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
         .showIf { outline }
@@ -158,6 +163,7 @@ object ManiaHelper : Module(
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
             val now = System.nanoTime()
             val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
+            fx.materials = materials
             fx.begin(style, (now - epoch) / 1.0e9, s, tickNow)
             val lit = fx.lightDetail > 0
             light.begin()
@@ -181,12 +187,12 @@ object ManiaHelper : Module(
                     if (surfaces.isEmpty()) continue
                     val safe = expected == ManiaBlock.GREEN
                     val crest = fx.crest(offX, offZ, safe)
-                    val colour = fx.tint(colours[expected.ordinal], crest, safe)
+                    val colour = fx.tint(colours[expected.ordinal], expected, crest, offX, offZ)
                     for (surface in surfaces) {
                         if (skipMatching && surface.type == expected) continue
                         for (box in surface.tints) {
                             box(box, colour)
-                            if (lit) light.face(box, expected, colour)
+                            if (lit) light.face(box, offX, offZ, expected, colour)
                         }
                     }
                     if (!outlined) continue

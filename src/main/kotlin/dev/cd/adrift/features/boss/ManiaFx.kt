@@ -51,6 +51,9 @@ internal class ManiaFx {
 
     val animated get() = style != ManiaStyle.STATIC
 
+    /** Gives each block its own texture: embers on redstone, smoke over coal, caustics on the safe ring. */
+    var materials = false
+
     /** Grid cells per block side of [ManiaLight], 0 when nothing is lit. */
     var lightDetail = 0
         private set
@@ -67,7 +70,7 @@ internal class ManiaFx {
         val cycle = session.cycleProgress(tick)
         sweep = TAU * (cycle ?: fraction(time / CYCLE_SECONDS))
         coalAngle = if (cycle == null) Double.NaN else TAU * session.coalProgress
-        lightDetail = if (style == ManiaStyle.RADAR) 4 else 0
+        lightDetail = if (style == ManiaStyle.RADAR || materials) 4 else 0
     }
 
     /** Glow strength of the column, 0..1. The safe ring swings over the whole range, danger only around the middle. */
@@ -87,24 +90,70 @@ internal class ManiaFx {
         }
     }
 
-    /** [base] lit to [crest]. */
-    fun tint(base: Color, crest: Double, safe: Boolean): Color {
-        if (!animated) return base
-        val hot = base.mix(Colors.WHITE, if (safe) 0.78 else 0.45)
-        val alpha = (base.alpha * (0.48 + 0.68 * crest)).roundToInt().coerceIn(0, 245)
-        return Color((alpha shl 24) or base.mix(hot, crest * if (safe) 0.65 else 0.2).rgb)
+    /** Tint of column ([offX], [offZ]) showing [type] in [base] colour, lit to [crest]. */
+    fun tint(base: Color, type: ManiaBlock, crest: Double, offX: Int, offZ: Int): Color {
+        val safe = type == ManiaBlock.GREEN
+        var colour = base
+        if (animated) {
+            val hot = base.mix(Colors.WHITE, if (safe) 0.78 else 0.45)
+            val alpha = (base.alpha * (0.48 + 0.68 * crest)).roundToInt().coerceIn(0, 245)
+            colour = Color((alpha shl 24) or base.mix(hot, crest * if (safe) 0.65 else 0.2).rgb)
+        }
+        if (materials && type == ManiaBlock.REDSTONE) colour = smoulder(colour, offX, offZ)
+        return colour
     }
 
     /**
-     * Light added on top of the tint at ([u], [v]) on a column of [type] tinted [colour], as `0xAARRGGBB` for an
-     * additive blend: colour scaled by alpha. 0 for none.
+     * Light added on top of the tint at ([u], [v]) in column ([offX], [offZ]), which shows [type] tinted [colour].
+     * `0xAARRGGBB` for an additive blend, so colour scaled by alpha; 0 for none.
      */
-    fun light(u: Double, v: Double, type: ManiaBlock, colour: Color): Int {
+    fun light(u: Double, v: Double, offX: Int, offZ: Int, type: ManiaBlock, colour: Color): Int {
         lightR = 0.0
         lightG = 0.0
         lightB = 0.0
         if (style == ManiaStyle.RADAR) radarLight(u, v, colour)
+        if (materials) when (type) {
+            ManiaBlock.GREEN -> caustics(u, v, colour)
+            ManiaBlock.REDSTONE -> add(EMBER, EMBER_GLOW * ember(offX, offZ) * exp(-EMBER_FOCUS * sq(u - offX, v - offZ)))
+            ManiaBlock.COAL -> smoke(u, v)
+            else -> Unit
+        }
         return packLight()
+    }
+
+    /** Redstone flickers like embers, now and then flaring orange. */
+    private fun smoulder(colour: Color, offX: Int, offZ: Int): Color {
+        val seed = hash(offX, offZ, 1)
+        val flicker = 0.5 + 0.5 * sin(time * 9.0 + seed * 40) * sin(time * 5.3 + seed * 23)
+        val flare = ember(offX, offZ)
+        val alpha = (colour.alpha * (0.8 + 0.35 * flicker + 0.35 * flare)).roundToInt().coerceIn(0, 245)
+        return Color((alpha shl 24) or colour.mix(EMBER, 0.12 * flicker + 0.55 * flare).rgb)
+    }
+
+    /** How hard column ([offX], [offZ]) is flaring right now, 0..1; a few at a time flare up and die down. */
+    private fun ember(offX: Int, offZ: Int): Double {
+        val clock = time * EMBER_RATE + hash(offX, offZ, 2)
+        val slot = floor(clock)
+        if (hash(offX, offZ, slot.toInt()) < 1 - EMBER_CHANCE) return 0.0
+        val life = clock - slot
+        return (1 - life).pow(2) * (life * 8).coerceAtMost(1.0)
+    }
+
+    /** Wavy lines of light, like sun through shallow water. */
+    private fun caustics(u: Double, v: Double, colour: Color) {
+        val t = time
+        val waves = sin(u * 1.6 + t * 1.2) + sin(v * 1.8 - t * 0.9) +
+            sin((u * 0.8 + v * 1.3) * 1.4 + t * 1.5) + sin((u * 1.2 - v * 0.7) * 1.5 - t * 1.1)
+        val line = (1 - abs(waves) / 4).pow(6)
+        add(colour.mix(Colors.WHITE, 0.6), CAUSTIC * ((line - 0.2) / 0.8))
+    }
+
+    /** Pale wisps drifting over coal. */
+    private fun smoke(u: Double, v: Double) {
+        val t = time
+        val n = 0.65 * noise(u * 0.45 + t * 0.35, v * 0.45 + t * 0.15) +
+            0.35 * noise(u * 1.1 - t * 0.5 + 17.3, v * 1.1 + t * 0.3)
+        add(SMOKE, SMOKE_GLOW * smoothstep(0.45, 0.85, n))
     }
 
     /** Coal getting closer, 0 (a whole terracotta step away, or unknown) to 1 (now). */
@@ -177,10 +226,48 @@ internal class ManiaFx {
         private const val RADAR_TRAIL = 0.45
         private const val COAL_MARK_WIDTH = 0.16
         private val COAL_MARK = Color(0xFFFFE6C8.toInt())
+        private val EMBER = Color(0xFFFF9A3C.toInt())
+        /** Flare slots per second per column, and the share of slots that flare. */
+        private const val EMBER_RATE = 2.5
+        private const val EMBER_CHANCE = 0.12
+        private const val EMBER_GLOW = 0.45
+        private const val EMBER_FOCUS = 3.0
+        private const val CAUSTIC = 0.32
+        private val SMOKE = Color(0xFF9C90B0.toInt())
+        private const val SMOKE_GLOW = 0.2
 
         fun distance(x: Double, z: Double) = sqrt(x * x + z * z)
         fun distance(x: Int, z: Int) = sqrt((x * x + z * z).toDouble())
         fun fraction(x: Double) = x - floor(x)
+        fun sq(x: Double, z: Double) = x * x + z * z
+
+        fun smoothstep(from: Double, to: Double, x: Double): Double {
+            val t = ((x - from) / (to - from)).coerceIn(0.0, 1.0)
+            return t * t * (3 - 2 * t)
+        }
+
+        /** Repeatable pseudo-random 0..1 for a lattice point. */
+        fun hash(x: Int, z: Int, seed: Int): Double {
+            var h = x * 374761393 + z * 668265263 + seed * 1442695041
+            h = (h xor (h ushr 13)) * 1274126177
+            h = h xor (h ushr 16)
+            return (h and 0xFFFFFF) / 16777216.0
+        }
+
+        /** Smooth value noise, 0..1. */
+        fun noise(x: Double, z: Double): Double {
+            val ix = floor(x)
+            val iz = floor(z)
+            val fx = x - ix
+            val fz = z - iz
+            val sx = fx * fx * (3 - 2 * fx)
+            val sz = fz * fz * (3 - 2 * fz)
+            val x0 = ix.toInt()
+            val z0 = iz.toInt()
+            val top = hash(x0, z0, 7) + (hash(x0 + 1, z0, 7) - hash(x0, z0, 7)) * sx
+            val bottom = hash(x0, z0 + 1, 7) + (hash(x0 + 1, z0 + 1, 7) - hash(x0, z0 + 1, 7)) * sx
+            return top + (bottom - top) * sz
+        }
 
         /** Radians clockwise from north (-z) seen from above, 0 until 2π. */
         fun angleOf(u: Double, v: Double): Double {

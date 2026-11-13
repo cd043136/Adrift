@@ -11,8 +11,8 @@ import net.minecraft.world.phys.AABB
 internal class ManiaLight {
     /** Per face: minX, maxX, minZ, maxZ, y. */
     private var faces = DoubleArray(5 * 256)
-    /** Per face: block ordinal, tint colour. */
-    private var info = IntArray(2 * 256)
+    /** Per face: column offset x and z, block ordinal, tint colour. */
+    private var info = IntArray(INFO * 256)
     private var count = 0
     private var corners = IntArray(0)
 
@@ -22,7 +22,7 @@ internal class ManiaLight {
         count = 0
     }
 
-    fun face(box: AABB, type: ManiaBlock, colour: Color) {
+    fun face(box: AABB, offX: Int, offZ: Int, type: ManiaBlock, colour: Color) {
         if (count * 5 == faces.size) {
             faces = faces.copyOf(faces.size * 2)
             info = info.copyOf(info.size * 2)
@@ -33,8 +33,11 @@ internal class ManiaLight {
         faces[o + 2] = box.minZ
         faces[o + 3] = box.maxZ
         faces[o + 4] = box.maxY + LIFT
-        info[count * 2] = type.ordinal
-        info[count * 2 + 1] = colour.rgba
+        val i = count * INFO
+        info[i] = offX
+        info[i + 1] = offZ
+        info[i + 2] = type.ordinal
+        info[i + 3] = colour.rgba
         count++
     }
 
@@ -51,12 +54,14 @@ internal class ManiaLight {
             val minZ = faces[o + 2]
             val maxZ = faces[o + 3]
             val y = faces[o + 4]
-            val type = ManiaBlock.entries[info[f * 2]]
-            val colour = Color(info[f * 2 + 1])
+            val offX = info[f * INFO]
+            val offZ = info[f * INFO + 1]
+            val type = ManiaBlock.entries[info[f * INFO + 2]]
+            val colour = Color(info[f * INFO + 3])
             val stepX = (maxX - minX) / n
             val stepZ = (maxZ - minZ) / n
             for (j in 0..n) for (i in 0..n) {
-                corners[j * side + i] = fx.light(minX + i * stepX - originX, minZ + j * stepZ - originZ, type, colour)
+                corners[j * side + i] = fx.light(minX + i * stepX - originX, minZ + j * stepZ - originZ, offX, offZ, type, colour)
             }
             for (j in 0 until n) for (i in 0 until n) {
                 val c00 = corners[j * side + i]
@@ -76,5 +81,6 @@ internal class ManiaLight {
     private companion object {
         /** Above the tint, below the outline. */
         const val LIFT = 0.003
+        const val INFO = 4
     }
 }
