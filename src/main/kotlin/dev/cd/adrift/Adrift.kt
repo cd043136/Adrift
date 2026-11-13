@@ -20,6 +20,7 @@ import dev.cd.adrift.features.party.PartyAnnounce
 import dev.cd.adrift.features.tracking.SlayerDrops
 import dev.cd.adrift.features.tracking.Splits
 import dev.cd.adrift.hud.HudEditorScreen
+import dev.cd.adrift.utils.ImpelTracker
 import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.Scheduler
 import dev.cd.adrift.utils.SlayerUtils
@@ -56,6 +57,7 @@ object Adrift : ClientModInitializer {
         Scheduler.register()
         Location.register()
         SlayerUtils.register()
+        ImpelTracker.register()
 
         // Tabs in order, then every module (each adds its own section)
         Category.entries
