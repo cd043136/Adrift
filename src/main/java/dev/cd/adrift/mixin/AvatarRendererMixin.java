@@ -22,7 +22,7 @@ public abstract class AvatarRendererMixin {
         at = @At("TAIL")
     )
     private void adrift$extractDance(Avatar entity, AvatarRenderState state, float partialTicks, CallbackInfo ci) {
-        ManiaDance.extract(entity);
+        ManiaDance.extract(entity, state);
     }
 
     @Inject(

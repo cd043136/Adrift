@@ -253,13 +253,15 @@ object ManiaHelper : Module(
             }
             val curtainLit = fx.curtain && !contour.isEmpty
             val ball = fx.style == ManiaStyle.DISCO && mirrorBall
+            val dancing = ManiaDance.hasFx()
             val middleX = s.centreX + 0.5
             val middleZ = s.centreZ + 0.5
             if (ball) quads(depth = true) { fx.disco.ball(this, middleX, s.bossY, middleZ, cameraPos) }
-            if (!light.isEmpty || curtainLit || ball) glow {
+            if (!light.isEmpty || curtainLit || ball || dancing) glow {
                 light.draw(this, fx, middleX, middleZ)
                 if (curtainLit) contour.curtain(this, fx, colours[ManiaBlock.GREEN.ordinal].mix(CURTAIN_TINT, 0.5))
                 if (ball) fx.disco.beams(this, middleX, s.bossY, middleZ, cameraPos)
+                if (dancing) ManiaDance.drawFx(this, cameraPos)
             }
             if (ball) lines { fx.disco.chain(this, middleX, s.bossY, middleZ) }
             if (outlined && !contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
