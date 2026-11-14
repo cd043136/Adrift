@@ -211,20 +211,6 @@ internal class ManiaSession(
         else -> null
     }
 
-    /** Like [ticksUntilCoal], at a fractional tick for smooth animation. */
-    fun ticksUntilCoal(now: Double): Double? = when (phase) {
-        Phase.TERRACOTTA -> max(0.0, cycleStartTick + COAL_OFFSET - now)
-        Phase.REDSTONE -> max(0.0, redstoneTick + REDSTONE_DURATION - now)
-        else -> null
-    }
-
-    /** How far through the current cycle the fractional tick [now] is, 0..1, or null before the first cycle. */
-    fun cycleProgress(now: Double): Double? =
-        if (cycleIndex < 0 || phase == Phase.WAITING) null else ((now - cycleStartTick) / CYCLE_TICKS).coerceIn(0.0, 1.0)
-
-    /** Where in the cycle coal lands, as a [cycleProgress]. */
-    val coalProgress get() = COAL_OFFSET.toDouble() / CYCLE_TICKS
-
     fun processBatch(tick: Long, updates: List<ManiaUpdate>, synthetic: Boolean) {
         if (log.enabled) for (u in updates) log.file("B $tick ${u.x} ${u.y} ${u.z} ${u.type.symbol}")
 

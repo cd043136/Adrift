@@ -15,10 +15,8 @@ import kotlin.math.roundToLong
  */
 internal class ManiaOutline {
     private var segments = DoubleArray(6 * 128)
-    /** Per segment: boundary (see [edge]) above the block ordinal's three bits, crest (0..255) in the low byte. */
+    /** Per segment: block ordinal above crest (0..255) in the low byte. */
     private var styles = IntArray(128)
-    /** Per segment, this frame's marquee brightness. */
-    private var bulbs = DoubleArray(128)
     private var segmentCount = 0
     /** Edge ends per block corner, packed so that sorting groups them by corner and zone, lowest first. */
     private var joints = LongArray(128)
@@ -41,11 +39,10 @@ internal class ManiaOutline {
 
     /**
      * The [side] edge of the column at offset ([dx], [dz]) from the centre. [heights] holds two surface heights per
-     * side, one for each half of the edge. [crest] is the pulse strength, 0..1. [boundary] is the band on the inside
-     * of the edge, so each ring of edges has its own.
+     * side, one for each half of the edge. [crest] is the glow strength, 0..1.
      */
-    fun edge(dx: Int, dz: Int, side: Int, heights: DoubleArray, type: ManiaBlock, crest: Double, boundary: Int) {
-        val style = (boundary shl 11) or (type.ordinal shl 8) or (crest.coerceIn(0.0, 1.0) * 255).roundToInt()
+    fun edge(dx: Int, dz: Int, side: Int, heights: DoubleArray, type: ManiaBlock, crest: Double) {
+        val style = (type.ordinal shl 8) or (crest.coerceIn(0.0, 1.0) * 255).roundToInt()
         val alongZ = side >= WEST
         val ax = dx + if (side == EAST) 1 else 0
         val az = dz + if (side == SOUTH) 1 else 0
@@ -69,25 +66,13 @@ internal class ManiaOutline {
         joint(bx, bz, style, yb)
     }
 
-    /**
-     * Emits everything as lines of [width], [colours] indexed by block ordinal. Glow layers go under brighter ones.
-     * With [fx]'s marquee on, lights chase round each ring.
-     */
-    fun draw(batch: GeometryBatch, width: Float, colours: Array<Color>, fx: ManiaFx) {
+    /** Emits everything as lines of [width], [colours] indexed by block ordinal. Glow layers go under brighter ones. */
+    fun draw(batch: GeometryBatch, width: Float, colours: Array<Color>) {
         closeJoints()
-        if (bulbs.size < segmentCount) bulbs = DoubleArray(styles.size)
-        for (i in 0 until segmentCount) {
-            val o = i * 6
-            bulbs[i] = if (!fx.marquee) 1.0 else fx.bulb(
-                (segments[o] + segments[o + 3]) / 2 - originX - 0.5,
-                (segments[o + 2] + segments[o + 5]) / 2 - originZ - 0.5,
-                styles[i] shr 11,
-            )
-        }
         for (layer in 0 until LAYERS) {
             val lift = layer * LAYER_LIFT
             for (i in 0 until segmentCount) {
-                if (!pickStyle(layer, styles[i], width, colours, bulbs[i])) continue
+                if (!pickStyle(layer, styles[i], width, colours)) continue
                 val o = i * 6
                 batch.line(
                     segments[o], segments[o + 1] + lift, segments[o + 2],
@@ -144,10 +129,10 @@ internal class ManiaOutline {
             val gap = quantY(high) - quantY(low)
             if (gap < MIN_RISER || gap > MAX_RISER) continue
             val group = (low ushr GROUP_SHIFT).toInt()
-            val corner = group shr 6
+            val corner = group shr 3
             val x = (originX + corner / CORNER_SIDE - CORNER_BIAS).toDouble()
             val z = (originZ + corner % CORNER_SIDE - CORNER_BIAS).toDouble()
-            val style = ((group and 63) shl 8) or (low and 0xFF).toInt()
+            val style = ((group and 7) shl 8) or (low and 0xFF).toInt()
             segment(x, worldY(low), z, x, worldY(high), z, style)
         }
     }
@@ -170,7 +155,7 @@ internal class ManiaOutline {
     private fun joint(cornerX: Int, cornerZ: Int, style: Int, y: Double) {
         if (jointCount == joints.size) joints = joints.copyOf(jointCount * 2)
         val corner = (cornerX + CORNER_BIAS) * CORNER_SIDE + cornerZ + CORNER_BIAS
-        val group = ((corner shl 6) or (style shr 8)).toLong()
+        val group = ((corner shl 3) or (style shr 8)).toLong()
         val quant = ((y - originY) * Y_SCALE).roundToLong() + Y_BIAS
         joints[jointCount++] = (group shl GROUP_SHIFT) or (quant shl 8) or (style and 0xFF).toLong()
     }
@@ -179,24 +164,19 @@ internal class ManiaOutline {
 
     private fun worldY(joint: Long) = (quantY(joint) - Y_BIAS).toDouble() / Y_SCALE + originY
 
-    /**
-     * Sets [lineColour] and [lineWidth] for a segment in [layer]; false if the segment has no line there. [bulb] is
-     * how lit the segment is by the marquee, 0..1, 1 without it.
-     */
-    private fun pickStyle(layer: Int, style: Int, width: Float, colours: Array<Color>, bulb: Double): Boolean {
-        val type = (style shr 8) and 7
+    /** Sets [lineColour] and [lineWidth] for a segment in [layer]; false if the segment has no line there. */
+    private fun pickStyle(layer: Int, style: Int, width: Float, colours: Array<Color>): Boolean {
+        val type = style shr 8
         val crest = (style and 0xFF) / 255.0
         val base = colours[type]
-        val dim = 0.3 + 0.7 * bulb
-        val swell = 0.85f + 0.3f * bulb.toFloat()
         if (type == ManiaBlock.GREEN.ordinal) when (layer) {
-            0 -> line(base, (115 + 85 * crest).coerceIn(80.0, 215.0) * dim, width * (1.8f + 0.65f * crest.toFloat()) * swell)
-            1 -> line(base.mix(MINT, 0.55), 0xF8 * dim, width)
-            else -> line(base.mix(Colors.WHITE, 0.78), (200 + 55 * crest) * dim, width * 0.45f)
+            0 -> line(base, (115 + 85 * crest).coerceIn(80.0, 215.0), width * (1.8f + 0.65f * crest.toFloat()) * 1.15f)
+            1 -> line(base.mix(MINT, 0.55), 0xF8.toDouble(), width)
+            else -> line(base.mix(Colors.WHITE, 0.78), 200 + 55 * crest, width * 0.45f)
         } else {
             if (layer != 0) return false
-            if (type == ManiaBlock.COAL.ordinal) line(base, 0xEF * dim, width * 1.15f * swell)
-            else line(base, (base.alpha + 90).coerceIn(50, 225) * dim, width * 0.75f * swell)
+            if (type == ManiaBlock.COAL.ordinal) line(base, 0xEF.toDouble(), width * 1.15f * 1.15f)
+            else line(base, (base.alpha + 90).coerceIn(50, 225).toDouble(), width * 0.75f * 1.15f)
         }
         return true
     }

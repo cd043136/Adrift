@@ -42,7 +42,6 @@ object ManiaHelper : Module(
     "Draws your mania pattern on the ground, helpful for uneven terrain or overlapping mania.",
     toggle = "Mania Helper",
 ) {
-    private const val MAX_RENDER_RADIUS = 30
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0
     private const val SCAN_DELAY_TICKS = 40
     private const val MAX_LOGGED_SESSIONS = 100
@@ -60,43 +59,20 @@ object ManiaHelper : Module(
     private val EDGE_SAMPLE_X = doubleArrayOf(0.25, 0.75, 0.25, 0.75, 0.12, 0.12, 0.88, 0.88)
     private val EDGE_SAMPLE_Z = doubleArrayOf(0.12, 0.12, 0.88, 0.88, 0.25, 0.75, 0.25, 0.75)
 
-    private val renderRadius by int(
-        "Render Radius", MAX_RENDER_RADIUS, 3..MAX_RENDER_RADIUS, 1,
-        "Only draws columns this close to you; the maximum draws the whole pattern.", " blocks"
-    )
     private val style by choice(
-        "Style", ManiaStyle.PULSE,
-        "How the colours move. Pulse ripples waves out from the centre; Heartbeat thumps, racing faster as coal gets " +
-            "closer; Radar sweeps a hand round once per cycle, past a mark where coal lands; Disco throws spots, " +
-            "lasers and flashing tiles across the floor to a beat, with a strobe when coal hits.",
+        "Style", ManiaStyle.STATIC,
+        "How the floor looks. Static keeps it still; Disco throws spots, lasers and flashing tiles across the floor " +
+            "to a beat, with a strobe when coal hits.",
     )
+    private val pulse by bool("Pulse", true, "Waves ripple out from the centre; works with either style.")
     private val mirrorBall by bool("Mirror Ball", true, "Hangs a spinning mirror ball over the boss, beaming the disco spots down.")
         .showIf { style == ManiaStyle.DISCO }
     private val breakdance by bool(
         "Breakdance", true,
         "Your boss breakdances to the beat until the last second of mania. Boss Highlight is off while it dances.",
     ).showIf { style == ManiaStyle.DISCO }
-    private val materials by bool(
-        "Material Effects", true,
-        "Gives each block its own look: redstone smoulders and flares like embers, smoke drifts over coal and light " +
-            "ripples across the safe ring like sun through water.",
-    )
-    private val glitter by bool(
-        "Glitter", false, "Stars twinkle across the floor, more and more of them as coal gets closer.",
-    )
-    private val shockwaves by bool(
-        "Shockwaves", true, "A ring of light bursts out from the centre whenever the pattern changes.",
-    )
-    private val ripples by bool(
-        "Footstep Ripples", false, "Rings spread over the floor from your steps, like walking on water; landing makes a big one.",
-    )
-    private val lamp by bool(
-        "Proximity Lamp", false, "The floor around you is brighter and lit by a soft pool of light; far away it fades back.",
-    )
     private val outline by bool("Outline", true, "Traces the edge of each ring, following steps and slabs; the safe ring glows.")
     private val outlineWidth by double("Outline Width", 2.0, 0.5..5.0, 0.25, "Thickness of the outline.")
-        .showIf { outline }
-    private val marquee by bool("Marquee", false, "Lights chase round the outline like marquee bulbs, neighbouring rings in turn.")
         .showIf { outline }
     private val curtain by bool("Light Curtain", false, "A shimmering curtain of light rises off the edges of the safe ring.")
     private val safeOnly by bool("Safe Only", false, "Only draws the safe (green) ring.")
@@ -183,29 +159,18 @@ object ManiaHelper : Module(
             val level = mc.level ?: return@on
             if (level !== sessionLevel) return@on
 
-            val px = player.x
-            val pz = player.z
-            val fromCentreX = px - (s.centreX + 0.5)
-            val fromCentreZ = pz - (s.centreZ + 0.5)
+            val fromCentreX = player.x - (s.centreX + 0.5)
+            val fromCentreZ = player.z - (s.centreZ + 0.5)
             if (fromCentreX * fromCentreX + fromCentreZ * fromCentreZ > MAX_PLAYER_DISTANCE_SQ) return@on
 
             surfaceCache.sync(s)
-            val radius = renderRadius
-            val radiusSq = if (radius >= MAX_RENDER_RADIUS) Double.MAX_VALUE else (radius * radius).toDouble()
             val greenOnly = safeOnly
             val skipMatching = onlyDifferent
             for (block in ManiaBlock.entries) colours[block.ordinal] = colourFor(block)
             val now = System.nanoTime()
-            val tickNow = lastTick + ((now - lastTickNanos) / TICK_NANOS).coerceIn(0.0, 1.0)
-            fx.materials = materials
-            fx.glitter = glitter
-            fx.shockwaves = shockwaves
-            fx.ripples = ripples
-            fx.lamp = lamp
-            fx.marquee = outline && marquee
+            fx.pulse = pulse
             fx.curtain = curtain
-            fx.colours = colours
-            fx.begin(style, (now - epoch) / 1.0e9, s, tickNow, fromCentreX, fromCentreZ, player.onGround())
+            fx.begin(style, (now - epoch) / 1.0e9, s)
             val lit = fx.lit
             light.begin()
             val outlined = outline
@@ -221,20 +186,17 @@ object ManiaHelper : Module(
                     val offZ = ManiaGeometry.offsetZ[i]
                     val x = s.centreX + offX
                     val z = s.centreZ + offZ
-                    val dx = x + 0.5 - px
-                    val dz = z + 0.5 - pz
-                    if (dx * dx + dz * dz > radiusSq) continue
                     surfaceCache.ensure(i, level, x, z)
                     val surfaces = surfaceCache.surfaces[i]
                     if (surfaces.isEmpty()) continue
                     val safe = expected == ManiaBlock.GREEN
                     val crest = fx.crest(offX, offZ, safe)
-                    val colour = fx.tint(colours[expected.ordinal], expected, crest, offX, offZ)
+                    val colour = fx.tint(colours[expected.ordinal], expected, crest)
                     for (surface in surfaces) {
                         if (skipMatching && surface.type == expected) continue
                         for (box in surface.tints) {
                             box(box, colour)
-                            if (lit) light.face(box, offX, offZ, expected, colour)
+                            if (lit) light.face(box)
                         }
                     }
                     if (!traced) continue
@@ -243,10 +205,9 @@ object ManiaHelper : Module(
                         val beyondBand = if (j >= 0) ManiaGeometry.offsetBand[j] else ManiaGeometry.OUTSIDE
                         val beyond = if (j >= 0) s.expectedBlock(beyondBand) else null
                         if (zoneRank(expected) <= zoneRank(beyond)) continue
-                        val boundary = minOf(ManiaGeometry.offsetBand[i], beyondBand)
                         for (surface in surfaces) {
                             if (skipMatching && surface.type == expected) continue
-                            contour.edge(offX, offZ, side, surface.edges, expected, crest, boundary)
+                            contour.edge(offX, offZ, side, surface.edges, expected, crest)
                         }
                     }
                 }
@@ -264,7 +225,7 @@ object ManiaHelper : Module(
                 if (dancing) ManiaDance.drawFx(this, cameraPos)
             }
             if (ball) lines { fx.disco.chain(this, middleX, s.bossY, middleZ) }
-            if (outlined && !contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours, fx) }
+            if (outlined && !contour.isEmpty) lines { contour.draw(this, outlineWidth.toFloat(), colours) }
         }
     }
 
