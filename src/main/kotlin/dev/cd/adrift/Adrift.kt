@@ -4,6 +4,7 @@ import com.odtheking.odin.config.ModuleConfig
 import com.odtheking.odin.events.core.EventBus
 import com.odtheking.odin.features.ModuleManager
 import dev.cd.adrift.commands.adriftCommand
+import dev.cd.adrift.features.impl.rift.AdriftModule
 import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.BeaconSoul
 import dev.cd.adrift.features.impl.rift.BossHighlight
@@ -32,7 +33,7 @@ object Adrift : ClientModInitializer {
         listOf(this, SlayerUtils).forEach { EventBus.subscribe(it) }
 
         // Register modules by adding to the list
-        ModuleManager.registerModules(ModuleConfig("Adrift.json"), VampireHelper, HealthWarning, AnnounceMania, VampireSplits, SlayerDrops, BossHighlight,
+        ModuleManager.registerModules(ModuleConfig("Adrift.json"), AdriftModule, VampireHelper, HealthWarning, AnnounceMania, VampireSplits, SlayerDrops, BossHighlight,
             BeaconSoul,
             TwinclawsFix,
             ManiaHelper,
