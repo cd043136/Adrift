@@ -13,11 +13,13 @@
     "requireAnnotations": true
   },
   "client": [
+    "AvatarRendererMixin",
     "ClientboundMoveEntityPacketAccessor",
     "ClientPacketListenerMixin",
     "ConnectionMixin",
     "EntityRenderDispatcherMixin",
     "EntityRendererMixin",
+    "HumanoidModelMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin"
   ]

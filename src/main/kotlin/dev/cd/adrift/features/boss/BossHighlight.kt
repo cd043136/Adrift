@@ -53,8 +53,9 @@ object BossHighlight : Module(
         }
     }
 
+    /** Bosses to highlight; ours sits out while it breakdances in a disco mania. */
     fun targets(): List<Entity> = buildList {
-        SlayerUtils.boss?.takeIf { it.isAlive }?.let(::add)
+        SlayerUtils.boss?.takeIf { it.isAlive && !ManiaHelper.isDancing(it) }?.let(::add)
         if (onOtherBoss) SlayerUtils.lootshareBoss?.takeIf { it.isAlive && it !== SlayerUtils.boss }?.let(::add)
     }
 
@@ -70,6 +71,7 @@ object BossHighlight : Module(
     @JvmStatic
     fun isEntityTarget(entity: Entity?): Boolean {
         if (entity !is RemotePlayer || !isEntityActive() || !entity.isAlive) return false
+        if (ManiaHelper.isDancing(entity)) return false
         return entity === SlayerUtils.boss || (onOtherBoss && entity === SlayerUtils.lootshareBoss)
     }
 

@@ -246,7 +246,7 @@ internal class ManiaDisco {
 
     companion object {
         /** About 128 bpm. */
-        private const val BEATS_PER_SECOND = 128 / 60.0
+        const val BEATS_PER_SECOND = 128 / 60.0
         /** Radians per second the ball, and so its spots, turns. */
         private const val BALL_SPIN = 0.45
         private const val SPOTS = 20

@@ -1,6 +1,7 @@
 package dev.cd.adrift.features.boss
 
 import dev.cd.adrift.events.LevelEvent
+import dev.cd.adrift.features.boss.ManiaFx.Companion.smoothstep
 import dev.cd.adrift.events.RenderWorldEvent
 import dev.cd.adrift.events.TickEvent
 import dev.cd.adrift.features.Category
@@ -20,6 +21,7 @@ import net.minecraft.core.Direction
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
 import net.minecraft.util.Mth
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
@@ -32,6 +34,7 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.ceil
 
 object ManiaHelper : Module(
     "Mania",
@@ -47,6 +50,10 @@ object ManiaHelper : Module(
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
     private const val TICK_NANOS = 50_000_000.0
+    /** Mania seconds left when the breakdance has fully stopped. */
+    private const val DANCE_STOP = 1.0
+    /** Seconds the breakdance takes to fade in at the mania start and out before [DANCE_STOP]. */
+    private const val DANCE_FADE = 0.4
     private val CURTAIN_TINT = Color(0xFFE2FFF5.toInt())
     private const val EDGE_SAMPLES = 8
     // North and south sides sampled west then east, west and east sides sampled north then south.
@@ -65,6 +72,10 @@ object ManiaHelper : Module(
     )
     private val mirrorBall by bool("Mirror Ball", true, "Hangs a spinning mirror ball over the boss, beaming the disco spots down.")
         .showIf { style == ManiaStyle.DISCO }
+    private val breakdance by bool(
+        "Breakdance", true,
+        "Your boss breakdances to the beat until the last second of mania. Boss Highlight is off while it dances.",
+    ).showIf { style == ManiaStyle.DISCO }
     private val materials by bool(
         "Material Effects", true,
         "Gives each block its own look: redstone smoulders and flares like embers, smoke drifts over coal and light " +
@@ -127,6 +138,9 @@ object ManiaHelper : Module(
     private val light = ManiaLight()
     private val epoch = System.nanoTime()
     private var lastTickNanos = 0L
+    private var sessionNanos = 0L
+    /** Disco beat the breakdance starts on, the first one after the mania began. */
+    private var danceStartBeat = 0.0
     private var debugWriter: BufferedWriter? = null
     private var debugWriterFailed = false
 
@@ -333,6 +347,8 @@ object ManiaHelper : Module(
         captureX = s.guessX
         captureZ = s.guessZ
         capturing = true
+        sessionNanos = System.nanoTime()
+        danceStartBeat = ceil(discoBeat(sessionNanos))
         debugWriterFailed = false
         log.file("START tick=${s.startTick} Mania started, guess (${s.guessX}, ${s.guessZ}), boss y %.2f".format(s.bossY))
     }
@@ -370,6 +386,31 @@ object ManiaHelper : Module(
         scan.scan(level, player.blockY, s, tick, batch)
         flushBatch(tick, synthetic = true)
     }
+
+    /**
+     * How far the boss's breakdance has faded in at [now], 0 when it isn't dancing. Runs from the mania start, in the
+     * disco style, until [DANCE_STOP] seconds of mania are left.
+     */
+    internal fun danceWeight(now: Long): Double {
+        if (!enabled || style != ManiaStyle.DISCO || !breakdance) return 0.0
+        val s = session ?: return 0.0
+        if (sessionLevel !== mc.level) return 0.0
+        val remaining = s.maniaRemaining ?: return 0.0
+        // The timer only updates each server tick; count down between them.
+        val left = remaining - ((now - lastTickNanos) / 1.0e9).coerceIn(0.0, TICK_NANOS / 1.0e9)
+        val since = (now - sessionNanos) / 1.0e9
+        return smoothstep(0.0, DANCE_FADE, since) * smoothstep(DANCE_STOP, DANCE_STOP + DANCE_FADE, left)
+    }
+
+    /** Disco beats since the breakdance started; negative until its first beat. */
+    internal fun danceBeat(now: Long): Double = discoBeat(now) - danceStartBeat
+
+    /** Whether [entity] is our boss mid-breakdance, which Boss Highlight leaves alone. */
+    fun isDancing(entity: Entity?): Boolean =
+        entity != null && entity === SlayerUtils.boss && danceWeight(System.nanoTime()) > 0.0
+
+    /** The disco floor's beat count, so the dance kicks with the tiles. */
+    private fun discoBeat(now: Long): Double = (now - epoch) / 1.0e9 * ManiaDisco.BEATS_PER_SECOND
 
     private fun hudStatus(): Pair<String, Color>? {
         val s = session?.takeIf { it.locked && it.cycleIndex >= 0 } ?: return null
