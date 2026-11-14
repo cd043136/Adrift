@@ -9,6 +9,7 @@ import dev.cd.adrift.features.impl.rift.AnnounceMania
 import dev.cd.adrift.features.impl.rift.BeaconSoul
 import dev.cd.adrift.features.impl.rift.BossHighlight
 import dev.cd.adrift.features.impl.rift.ClotgoyleTracer
+import dev.cd.adrift.features.impl.rift.CustomTwinclaws
 import dev.cd.adrift.features.impl.rift.HealthWarning
 import dev.cd.adrift.features.impl.rift.ManiaHelper
 import dev.cd.adrift.features.impl.rift.SlayerDrops
@@ -37,6 +38,7 @@ object Adrift : ClientModInitializer {
             BeaconSoul,
             TwinclawsFix,
             ManiaHelper,
-            ClotgoyleTracer)
+            ClotgoyleTracer,
+            CustomTwinclaws)
     }
 }

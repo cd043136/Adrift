@@ -31,12 +31,14 @@ object RenderUtils {
         val px = -dz * scale
         val pz = dx * scale
 
-        emitQuad(
-            colour, depth,
-            start.x + px, start.y, start.z + pz,
-            start.x - px, start.y, start.z - pz,
-            end.x - px, end.y, end.z - pz,
-            end.x + px, end.y, end.z + pz
+        drawQuads(
+            listOf(
+                Vec3(start.x + px, start.y, start.z + pz),
+                Vec3(start.x - px, start.y, start.z - pz),
+                Vec3(end.x - px, end.y, end.z - pz),
+                Vec3(end.x + px, end.y, end.z + pz),
+            ),
+            colour, depth
         )
     }
 
@@ -47,14 +49,9 @@ object RenderUtils {
     fun tintBoxes(shape: VoxelShape, x: Int, y: Int, z: Int, epsilon: Double = 0.002): List<AABB> =
         shape.toAabbs().map { it.move(x.toDouble(), y.toDouble(), z.toDouble()).inflate(epsilon) }
 
-    private fun RenderExtractEvent.emitQuad(
-        colour: Color,
-        depth: Boolean,
-        x0: Double, y0: Double, z0: Double,
-        x1: Double, y1: Double, z1: Double,
-        x2: Double, y2: Double, z2: Double,
-        x3: Double, y3: Double, z3: Double
-    ) {
+    /** Every four [vertices] make one quad. */
+    fun RenderExtractEvent.drawQuads(vertices: List<Vec3>, colour: Color, depth: Boolean = false) {
+        if (vertices.size < 4) return
         //? if >=26.2 {
         val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
         val opaque = colour.alphaFloat >= 0.999f
@@ -80,14 +77,9 @@ object RenderUtils {
         val pose = context.poseStack().last()
         run {
         *///?}
-            fun vertex(x: Double, y: Double, z: Double) {
-                buffer.addVertex(pose, (x - cx).toFloat(), (y - cy).toFloat(), (z - cz).toFloat()).setColor(rgba)
+            for (v in vertices) {
+                buffer.addVertex(pose, (v.x - cx).toFloat(), (v.y - cy).toFloat(), (v.z - cz).toFloat()).setColor(rgba)
             }
-
-            vertex(x0, y0, z0)
-            vertex(x1, y1, z1)
-            vertex(x2, y2, z2)
-            vertex(x3, y3, z3)
         }
     }
 }
