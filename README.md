@@ -2,7 +2,7 @@
 
 Rift & vampire slayer features for Hypixel Skyblock. Modrinth link: https://modrinth.com/mod/adrift-sb
 
-Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin. Open the settings with `/adrift`
+Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin (the Cascade UI library is bundled). Open the settings with `/adrift`
 (or bind **Open Config** in Controls), and move HUD elements with `/adrift hud`. The settings open as a window by
 default; switch to a ClickGUI under **General → Menu → Style**.
 
@@ -43,11 +43,26 @@ default; switch to a ClickGUI under **General → Menu → Style**.
 </details>
 
 <details>
+<summary>Custom Twinclaws</summary>
+
+- Draws your boss's Twinclaws as a 3D crescent instead of falling blocks
+- Optionally hides the falling blocks
+</details>
+
+<details>
+<summary>Clotgoyle Tracer</summary>
+
+- Draws a tracer from your crosshair to nearby clotgoyles
+</details>
+
+<details>
 <summary>Mania Helper</summary>
 
 - Renders your mania pattern fully, fixes a bug where some blocks do not change colours during mania
 - Also prevents you from dying in mania if someone's griefing your boss
 - Status HUD: safe / move in / move out and time until coal
+- Outline that follows steps and slabs, optional light curtain off the safe ring, safe-ring-only mode
+- Disco style: spots, lasers, a mirror ball and a strobe on coal, and your boss breakdances
 
 ![](https://cdn.modrinth.com/data/KMvVDXMP/images/dd7ad4147b1bc62698ae68d843fa93b7d0584710.png)
 </details>
@@ -102,7 +117,6 @@ Sends to party chat, useful for lootsharing:
 - Clotgoyles
   - Custom rendering
   - Ground skull alert/indicator
-  - Nearby indicator
 - Damage counter?
 
 ## Development
