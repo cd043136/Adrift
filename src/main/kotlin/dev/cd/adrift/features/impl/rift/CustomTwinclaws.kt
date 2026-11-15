@@ -58,8 +58,7 @@ object CustomTwinclaws : Module(
     category = Category.RIFT,
     description = "Draws Twinclaws as a 3D crescent instead of falling blocks."
 ) {
-    private val colour by ColorSetting("Colour", default = Color("ff3030ff"), allowAlpha = true, desc = "Edges of the crescent.")
-    private val fillColour by ColorSetting("Fill Colour", default = Color("ff303050"), allowAlpha = true, desc = "Fill of the crescent.")
+    private val colour by ColorSetting("Colour", default = Color("ff303050"), allowAlpha = true, desc = "Fill of the crescent. Edges use it at full opacity.")
     //? if >=26.2 {
     private val lineWidth by NumberSetting("Line Width", 3.0, 1.0..8.0, 0.5, desc = "Width of the crescent edges.")
     //?} else
@@ -247,10 +246,11 @@ object CustomTwinclaws : Module(
                 quads += rings[i + 1][(j + 1) % 4]
                 quads += rings[i + 1][j]
             }
-            drawQuads(quads, fillColour, depth = true)
+            drawQuads(quads, colour, depth = true)
 
             val width = lineWidth.toFloat()
-            for (rings in shapes) for (j in 0 until 4) drawLine(rings.map { it[j] }, colour, true, width)
+            val edge = colour.copy().apply { alphaFloat = 1f }
+            for (rings in shapes) for (j in 0 until 4) drawLine(rings.map { it[j] }, edge, true, width)
         }
     }
 
