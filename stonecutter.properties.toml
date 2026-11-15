@@ -3,7 +3,7 @@
 mod.id = "adrift"
 mod.name = "Adrift"
 mod.description = "Rift and vampire slayer features for Hypixel Skyblock"
-mod.version = "0.0.4"
+mod.version = "0.0.5"
 
 deps.devauth = "1.2.2"
 deps.cascade = "2026.10.1"
