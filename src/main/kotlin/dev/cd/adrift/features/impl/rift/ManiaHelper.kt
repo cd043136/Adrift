@@ -97,6 +97,11 @@ object ManiaHelper : Module(
     //?} else
     //private val outlineWidth by NumberSetting("Outline width", 2.0, 0.5, 5.0, 0.25, desc = "Thickness of the outline")
         .withDependency { outline }
+    private val lootshare by BooleanSetting(
+        "Lootshare boss",
+        default = false,
+        desc = "Render mania helper on lootshare bosses too"
+    )
     private val safeOnly by BooleanSetting("Safe only", default = false, desc = "Only render the safe (green) ring")
     private val onlyDifferent by BooleanSetting(
         "Only where different",
@@ -292,8 +297,9 @@ object ManiaHelper : Module(
 
     private fun updateLifecycle(tick: Long) {
         val level = mc.level
-        val boss = SlayerUtils.boss?.takeIf { it.isAlive }
-        val timerText = boss?.let { (SlayerUtils.timer ?: level?.getEntity(it.id + 2))?.plainTextName }
+        val boss = trackedBoss()
+        val timer = if (boss != null && boss === SlayerUtils.boss) SlayerUtils.timer else null
+        val timerText = boss?.let { (timer ?: level?.getEntity(it.id + 2))?.plainTextName }
         val inMania = level != null && LocationUtils.currentArea == Island.Rift && timerText?.contains("MANIA") == true
 
         if (session != null) {
@@ -409,8 +415,11 @@ object ManiaHelper : Module(
         ManiaBlock.COAL, ManiaBlock.NONE -> coalColour
     }
 
+    private fun trackedBoss() = SlayerUtils.boss?.takeIf { it.isAlive }
+        ?: SlayerUtils.lootshareBoss?.takeIf { lootshare && it.isAlive }
+
     private fun logTick(s: ManiaSession, tick: Long) {
-        val boss = SlayerUtils.boss
+        val boss = trackedBoss()
         val player = mc.player
         val bossPos = boss?.let { "%.3f %.3f %.3f".format(it.x, it.y, it.z) } ?: "- - -"
         val playerPos = player?.let { "%.3f %.3f %.3f %.1f".format(it.x, it.y, it.z, it.health) } ?: "- - - -"
