@@ -1,8 +1,10 @@
-# Adrift
+# Adrift (standalone branch)
 
-Rift & vampire slayer features for Hypixel Skyblock. Modrinth link: https://modrinth.com/mod/adrift-sb
+Does not require Odin.
 
-Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin (the Cascade UI library is bundled). Open the settings with `/adrift`
+Rift & vampire slayer features for Hypixel Skyblock. Modrinth link (master branch, NOT standalone): https://modrinth.com/mod/adrift-sb
+
+Standalone Fabric mod: it only needs Fabric API and Fabric Language Kotlin. Open the settings with `/adrift`
 (or bind **Open Config** in Controls), and move HUD elements with `/adrift hud`. The settings open as a window by
 default; switch to a ClickGUI under **General → Menu → Style**.
 
@@ -11,6 +13,13 @@ default; switch to a ClickGUI under **General → Menu → Style**.
 | 26.1      | 0.151.0+   | 1.13.12+               |
 | 26.2      | 0.161.0+   | 1.14.2+                |
 | 26.3      | 0.165.0+   | 1.14.2+                |
+
+### Why no Modrinth upload for this branch?
+
+It is ported from main mod fully by AI + additional AI slop features (e.g. vampire breakdance, mania disco) which Modrinth doesn't like. 
+
+### How to download
+Go to [Actions page](https://github.com/cd043136/Adrift/actions) and download the [latest build from standalone branch](https://github.com/cd043136/Adrift/actions?query=branch%3Astandalone).
 
 ## Features
 
