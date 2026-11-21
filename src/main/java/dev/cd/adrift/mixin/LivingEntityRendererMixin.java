@@ -23,8 +23,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Replaces the vanilla textured body + armor/layers for BossHighlight
- * entity-mode targets (Outline = glow only, Custom = flat fill plus
- * depth-tested glow). Nametags are skipped for a clean solid.
+ * Custom-mode targets (flat fill plus depth-tested glow). Nametags are
+ * skipped for a clean solid. Outline mode is left to vanilla rendering.
  * (The extract mixin still flags {@code outlineColor} so the outline post
  * chain runs at all.)
  */
@@ -50,12 +50,12 @@ public abstract class LivingEntityRendererMixin {
         CallbackInfo ci
     ) {
         if (!(state instanceof AvatarRenderState avatar)) return;
-        if (!BossHighlight.hasEntityTargets()) return;
+        // Outline mode keeps the vanilla model; the forced outlineColor gives a vanilla glow.
+        if (!BossHighlight.isCustomMode() || !BossHighlight.hasEntityTargets()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         Entity entity = mc.level.getEntity(avatar.id);
         if (!BossHighlight.isEntityTarget(entity)) return;
-        boolean custom = BossHighlight.isCustomMode();
 
         poseStack.pushPose();
         if (state.hasPose(Pose.SLEEPING)) {
@@ -81,24 +81,22 @@ public abstract class LivingEntityRendererMixin {
         );
         @SuppressWarnings({"unchecked", "rawtypes"})
         Model rawModel = (Model) this.getModel();
-        if (custom) {
-            submitNodeCollector.submitModel(
-                rawModel,
-                state,
-                poseStack,
-                fill,
-                state.lightCoords,
-                OverlayTexture.NO_OVERLAY,
-                BossHighlight.fillColorFor(entity),
-                null,
-                //? if >=26.3 {
-                0
-                //?} else {
-                /*0,
-                null
-                *///?}
-            );
-        }
+        submitNodeCollector.submitModel(
+            rawModel,
+            state,
+            poseStack,
+            fill,
+            state.lightCoords,
+            OverlayTexture.NO_OVERLAY,
+            BossHighlight.fillColorFor(entity),
+            null,
+            //? if >=26.3 {
+            0
+            //?} else {
+            /*0,
+            null
+            *///?}
+        );
         // Depth-tested glow, tinted with the outline colour. Skins keep alpha
         // cutout. 26.3+: outline types only go to the outline pass. Before:
         // textured first pass tinted toward the glow colour (any leftovers
