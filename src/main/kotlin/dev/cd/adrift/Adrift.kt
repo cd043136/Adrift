@@ -13,6 +13,7 @@ import dev.cd.adrift.features.impl.rift.CustomTwinclaws
 import dev.cd.adrift.features.impl.rift.HealthWarning
 import dev.cd.adrift.features.impl.rift.ManiaHelper
 import dev.cd.adrift.features.impl.rift.SlayerDrops
+import dev.cd.adrift.features.impl.rift.SpectralLanding
 import dev.cd.adrift.features.impl.rift.TwinclawsFix
 import dev.cd.adrift.features.impl.rift.VampireHelper
 import dev.cd.adrift.features.impl.rift.VampireSplits
@@ -39,6 +40,7 @@ object Adrift : ClientModInitializer {
             TwinclawsFix,
             ManiaHelper,
             ClotgoyleTracer,
-            CustomTwinclaws)
+            CustomTwinclaws,
+            SpectralLanding)
     }
 }

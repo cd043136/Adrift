@@ -56,6 +56,16 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 </details>
 
 <details>
+<summary>Spectral Landing</summary>
+
+### Spectral Landing
+- Shows where your boss will land after its SPECTRAL hop, about half a second before it touches down
+- The box is faded while it's a rough guess and turns solid once the spot is pinned down
+- Trail that follows the boss through the hop and fades out after it lands
+- Optional line from the boss to the landing spot, and support for other people's boss
+</details>
+
+<details>
 <summary>Vampire Helper</summary>
 
 ### Vampire Helper
