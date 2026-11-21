@@ -14,9 +14,11 @@
   },
   "client": [
     "ClientboundMoveEntityPacketAccessor",
+    "CustomHeadLayerMixin",
     "EntityRenderDispatcherMixin",
     "EntityRendererMixin",
     "LevelRendererMixin",
-    "LivingEntityRendererMixin"
+    "LivingEntityRendererMixin",
+    "LivingEntityRenderStateMixin"
   ]
 }
