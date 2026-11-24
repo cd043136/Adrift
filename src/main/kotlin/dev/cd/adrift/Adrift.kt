@@ -13,6 +13,7 @@ import dev.cd.adrift.features.boss.CustomTwinclaws
 import dev.cd.adrift.features.boss.IchorHelper
 import dev.cd.adrift.features.boss.LowHealthWarning
 import dev.cd.adrift.features.boss.ManiaHelper
+import dev.cd.adrift.features.boss.SpectralLanding
 import dev.cd.adrift.features.boss.Twinclaws
 import dev.cd.adrift.features.party.BeaconSoul
 import dev.cd.adrift.features.party.PartyAnnounce
@@ -61,7 +62,8 @@ object Adrift : ClientModInitializer {
         // Tabs in order, then every module (each adds its own section)
         Category.entries
         listOf(
-            BossHighlight, IchorHelper, ClotgoyleTracer, Twinclaws, CustomTwinclaws, ManiaHelper, LowHealthWarning, BossHud,
+            BossHighlight, IchorHelper, ClotgoyleTracer, Twinclaws, CustomTwinclaws, SpectralLanding,
+            ManiaHelper, LowHealthWarning, BossHud,
             PartyAnnounce, BeaconSoul,
             Splits, SlayerDrops,
             Menu,

@@ -125,6 +125,15 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
         lineVertex(x1, y1, z1, nx, ny, nz, color.rgba, width)
     }
 
+    /** A connected line through [points]. */
+    fun polyline(points: List<Vec3>, color: Color, width: Float) {
+        for (i in 1 until points.size) {
+            val a = points[i - 1]
+            val b = points[i]
+            line(a.x, a.y, a.z, b.x, b.y, b.z, color, width)
+        }
+    }
+
     private fun lineVertex(x: Double, y: Double, z: Double, nx: Float, ny: Float, nz: Float, rgba: Int, width: Float) {
         put(x, y, z, rgba)
         val i = (count - 1) * stride

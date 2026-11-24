@@ -59,6 +59,15 @@ Go to [Actions page](https://github.com/cd043136/Adrift/actions) and download th
 </details>
 
 <details>
+<summary>Spectral Landing</summary>
+
+- Shows where your boss will land after its SPECTRAL hop, about half a second before it touches down
+- The box is faded while it's a rough guess and turns solid once the spot is pinned down
+- Trail that follows the boss through the hop and fades out after it lands
+- Optional line from the boss to the landing spot, and support for other people's boss
+</details>
+
+<details>
 <summary>Clotgoyle Tracer</summary>
 
 - Draws a tracer from your crosshair to nearby clotgoyles
