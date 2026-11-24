@@ -4,7 +4,9 @@ import com.odtheking.odin.clickgui.settings.impl.BooleanSetting
 import com.odtheking.odin.events.MessageEvent
 import com.odtheking.odin.events.core.on
 import com.odtheking.odin.features.Module
+import com.odtheking.odin.utils.handlers.schedule
 import com.odtheking.odin.utils.modMessage
+import com.odtheking.odin.utils.sendCommand
 import com.odtheking.odin.utils.skyblock.Island
 import com.odtheking.odin.utils.skyblock.LocationUtils
 import dev.cd.adrift.utils.Category
@@ -16,7 +18,7 @@ import net.minecraft.network.chat.TextColor
 object SlayerDrops : Module(
     "Slayer Drops",
     category = Category.RIFT,
-    description = "Copy and rename valuable slayer drops"
+    description = "Copy, rename and announce valuable slayer drops"
 ) {
     private val copyDrops by BooleanSetting(
         "Copy Drops",
@@ -28,8 +30,23 @@ object SlayerDrops : Module(
         default = false,
         desc = "Rename bundle drop to 'The One IV Bundle'"
     )
+    private val sendToParty by BooleanSetting(
+        "Send to Party Chat",
+        default = false,
+        desc = "Auto send good drops to party chat"
+    )
 
     private const val DROP = "RARE DROP!"
+    private const val PARTY_DELAY_TICKS = 20
+
+    private val privateUseChars = Regex("[\uE000-\uF8FF]")
+    private val whitespace = Regex("\\s+")
+
+    // VERY RARE DROP! (The One IV Bundle) (+56 Magic Find)
+    private val dropLine = Regex("""^(.*RARE DROP!) \(([^)]+)\)(.*)$""")
+    private val rarities = listOf("RARE", "VERY RARE", "CRAZY RARE", "INSANE")
+
+    private val pendingPartyDrops = mutableListOf<Pair<ValuableDrop, String>>()
 
     private enum class ValuableDrop(
         val plain: String,
@@ -59,7 +76,7 @@ object SlayerDrops : Module(
     init {
         on<MessageEvent.Chat> {
             if (LocationUtils.currentArea != Island.Rift) return@on
-            if (!bundleRename && !copyDrops) return@on
+            if (!bundleRename && !copyDrops && !sendToParty) return@on
 
             val pieces = component.toFlatList(Style.EMPTY)
             val matched = ValuableDrop.entries.filter { drop -> pieces.any(drop::matches) }
@@ -90,7 +107,44 @@ object SlayerDrops : Module(
                 mc.keyboardHandler.clipboard = text
                 modMessage("Copied to clipboard")
             }
+
+            if (sendToParty && isSystemLine(message, DROP)) queuePartyDrop(message, matched)
         }
+    }
+
+    override fun onDisable() {
+        pendingPartyDrops.clear()
+        super.onDisable()
+    }
+
+    private fun queuePartyDrop(message: String, matched: List<ValuableDrop>) {
+        val text = matched.fold(message) { text, drop -> drop.rename(text) }
+            .replace(privateUseChars, "")
+            .replace(whitespace, " ")
+            .trim()
+
+        pendingPartyDrops.add(matched.first() to text)
+        if (pendingPartyDrops.size > 1) return
+
+        schedule(PARTY_DELAY_TICKS, serverTick = true) { mc.execute(::flushPartyDrops) }
+    }
+
+    private fun flushPartyDrops() {
+        if (pendingPartyDrops.isEmpty()) return
+        val lines = pendingPartyDrops.sortedBy { (drop, _) -> drop.ordinal }.map { (_, text) -> text }
+        pendingPartyDrops.clear()
+        if (sendToParty) sendCommand("pc ${combineDrops(lines)}")
+    }
+
+    private fun combineDrops(lines: List<String>): String {
+        val parsed = lines.map { line -> dropLine.find(line)?.destructured ?: return lines.joinToString(" ") }
+
+        // Drops can have different rarities, show the highest one
+        val rarity = parsed.map { (rarity) -> rarity }
+            .maxBy { rarity -> rarities.indexOfLast { rarity.startsWith(it) } }
+        val items = parsed.joinToString(" + ") { (_, item) -> item }
+        val (_, _, magicFind) = parsed.first()
+        return "$rarity ($items)$magicFind"
     }
 
     private fun isSystemLine(value: String, keyword: String): Boolean =

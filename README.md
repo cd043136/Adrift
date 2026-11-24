@@ -53,6 +53,7 @@ Announce when you reach specific mania phase(s), useful for lootsharing
 ### Slayer Drops
 - Rename bundle drops to "The One IV Bundle"
 - Copy rare drops
+- Send rare drops to party chat
 </details>
 
 <details>
