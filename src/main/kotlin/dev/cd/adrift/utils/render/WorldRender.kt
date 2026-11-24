@@ -5,9 +5,12 @@ import com.mojang.blaze3d.vertex.VertexConsumer
 import dev.cd.adrift.events.RenderWorldEvent
 import dev.cd.adrift.utils.Color
 import dev.cd.adrift.utils.mc
+import net.minecraft.client.Camera
+import net.minecraft.client.gui.Font
 import net.minecraft.client.renderer.rendertype.AdriftRenderTypes
 import net.minecraft.client.renderer.rendertype.RenderType
 import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import kotlin.math.sqrt
@@ -170,11 +173,13 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
 private val scratchQuads = GeometryBatch(lines = false)
 private val scratchLines = GeometryBatch(lines = true)
 
-internal val cameraPos: Vec3
+internal val camera: Camera
     //? if >=26.2 {
-    get() = mc.gameRenderer.mainCamera().position()
+    get() = mc.gameRenderer.mainCamera()
     //?} else
-    //get() = mc.gameRenderer.mainCamera.position()
+    //get() = mc.gameRenderer.mainCamera
+
+internal val cameraPos: Vec3 get() = camera.position()
 
 private fun RenderWorldEvent.submit(type: RenderType, batch: GeometryBatch) {
     if (batch.isEmpty) return
@@ -215,4 +220,26 @@ fun RenderWorldEvent.drawStyledBoxes(boxes: List<Pair<AABB, Color>>, style: BoxS
         }
     }
     if (style != BoxStyle.FILLED) lines { for ((aabb, color) in boxes) boxEdges(aabb, color, 3f) }
+}
+
+private const val FULL_BRIGHT = 0xF000F0
+
+/** Depth-tested [text] centred over [pos] and facing the camera; [scale] 1 is name tag size. */
+fun RenderWorldEvent.text(text: String, pos: Vec3, scale: Float = 1f) {
+    val line = Component.literal(text).visualOrderText
+    val x = -mc.font.width(line) / 2f
+    val size = 0.025f * scale
+    val offset = pos.subtract(cameraPos)
+
+    val stack = context.poseStack()
+    stack.pushPose()
+    stack.translate(offset.x, offset.y, offset.z)
+    stack.last().rotate(camera.rotation())
+    stack.scale(size, -size, size)
+    val mode = Font.DisplayMode.POLYGON_OFFSET
+    //? if >=26.2 {
+    context.submitNodeCollector().submitText(stack, x, 0f, line, true, mode, FULL_BRIGHT, -1, 0, 0)
+    //?} else
+    //mc.font.drawInBatch(line, x, 0f, -1, true, stack.last().pose(), context.bufferSource(), mode, 0, FULL_BRIGHT)
+    stack.popPose()
 }

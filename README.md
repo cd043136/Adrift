@@ -74,6 +74,13 @@ Go to [Actions page](https://github.com/cd043136/Adrift/actions) and download th
 </details>
 
 <details>
+<summary>Resurrect Alert</summary>
+
+- Tints the skulls clotgoyles leave on the ground
+- Optional tracer and countdown to your boss's skulls while it casts RESURRECT
+</details>
+
+<details>
 <summary>Mania Helper</summary>
 
 - Renders your mania pattern fully, fixes a bug where some blocks do not change colours during mania
@@ -134,7 +141,6 @@ Sends to party chat, useful for lootsharing:
 - Add images to README
 - Clotgoyles
   - Custom rendering
-  - Ground skull alert/indicator
 - Damage counter?
 
 ## Development

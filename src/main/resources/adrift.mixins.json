@@ -17,10 +17,12 @@
     "ClientboundMoveEntityPacketAccessor",
     "ClientPacketListenerMixin",
     "ConnectionMixin",
+    "CustomHeadLayerMixin",
     "EntityRenderDispatcherMixin",
     "EntityRendererMixin",
     "HumanoidModelMixin",
     "LevelRendererMixin",
-    "LivingEntityRendererMixin"
+    "LivingEntityRendererMixin",
+    "LivingEntityRenderStateMixin"
   ]
 }
