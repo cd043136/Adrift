@@ -135,6 +135,7 @@ Sends to party chat, useful for lootsharing:
 
 - Rename bundle drops to "The One IV Bundle"
 - Copy rare drops
+- Send rare drops to party chat
 </details>
 
 ## TODO

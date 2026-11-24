@@ -5,6 +5,8 @@ import dev.cd.adrift.features.Category
 import dev.cd.adrift.features.Module
 import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.modMessage
+import dev.cd.adrift.utils.schedule
+import dev.cd.adrift.utils.sendCommand
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
@@ -13,13 +15,14 @@ import net.minecraft.network.chat.TextColor
 object SlayerDrops : Module(
     "Drops",
     Category.TRACKING,
-    "Copies valuable slayer drops to the clipboard and renames the bundle drop.",
+    "Copies, renames and announces valuable slayer drops.",
     toggle = "Drops",
 ) {
     private val copyDrops by bool("Copy Drops", false, "Copies valuable drop messages to the clipboard.")
     private val bundleRename by bool("Rename Bundle", false, "Renames the bundle drop to 'The One IV Bundle'.")
+    private val sendToParty by bool("Send to Party Chat", false, "Sends valuable drops to party chat.")
 
-    private val anyOn get() = copyDrops || bundleRename
+    private val anyOn get() = copyDrops || bundleRename || sendToParty
 
     override val enabled get() = super.enabled && anyOn
 
@@ -28,6 +31,16 @@ object SlayerDrops : Module(
     }
 
     private const val DROP = "RARE DROP!"
+    private const val PARTY_DELAY_TICKS = 20
+
+    private val privateUseChars = Regex("[\uE000-\uF8FF]")
+    private val whitespace = Regex("\\s+")
+
+    // VERY RARE DROP! (The One IV Bundle) (+56 Magic Find)
+    private val dropLine = Regex("""^(.*RARE DROP!) \(([^)]+)\)(.*)$""")
+    private val rarities = listOf("RARE", "VERY RARE", "CRAZY RARE", "INSANE")
+
+    private val pendingPartyDrops = mutableListOf<Pair<ValuableDrop, String>>()
 
     private enum class ValuableDrop(
         val plain: String,
@@ -87,7 +100,43 @@ object SlayerDrops : Module(
                 mc.keyboardHandler.clipboard = text
                 modMessage("Copied to clipboard")
             }
+
+            if (sendToParty && isSystemLine(message, DROP)) queuePartyDrop(message, matched)
         }
+    }
+
+    override fun onDisable() {
+        pendingPartyDrops.clear()
+    }
+
+    private fun queuePartyDrop(message: String, matched: List<ValuableDrop>) {
+        val text = matched.fold(message) { text, drop -> drop.rename(text) }
+            .replace(privateUseChars, "")
+            .replace(whitespace, " ")
+            .trim()
+
+        pendingPartyDrops.add(matched.first() to text)
+        if (pendingPartyDrops.size > 1) return
+
+        schedule(PARTY_DELAY_TICKS, serverTick = true, ::flushPartyDrops)
+    }
+
+    private fun flushPartyDrops() {
+        if (pendingPartyDrops.isEmpty()) return
+        val lines = pendingPartyDrops.sortedBy { (drop, _) -> drop.ordinal }.map { (_, text) -> text }
+        pendingPartyDrops.clear()
+        if (sendToParty) sendCommand("pc ${combineDrops(lines)}")
+    }
+
+    private fun combineDrops(lines: List<String>): String {
+        val parsed = lines.map { line -> dropLine.find(line)?.destructured ?: return lines.joinToString(" ") }
+
+        // Drops can have different rarities, show the highest one
+        val rarity = parsed.map { (rarity) -> rarity }
+            .maxBy { rarity -> rarities.indexOfLast { rarity.startsWith(it) } }
+        val items = parsed.joinToString(" + ") { (_, item) -> item }
+        val (_, _, magicFind) = parsed.first()
+        return "$rarity ($items)$magicFind"
     }
 
     private fun isSystemLine(value: String, keyword: String): Boolean =

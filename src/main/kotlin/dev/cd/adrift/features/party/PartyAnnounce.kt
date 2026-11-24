@@ -7,7 +7,7 @@ import dev.cd.adrift.features.tracking.Splits
 import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.sendCommand
 
-/** Everything Adrift sends to party chat, in one place, for lootsharing. Only about your own boss. */
+/** Party chat messages about your own boss, for lootsharing. */
 object PartyAnnounce : Module(
     "Announce",
     Category.PARTY,
