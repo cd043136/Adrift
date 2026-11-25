@@ -29,6 +29,7 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import java.io.BufferedWriter
 import java.io.IOException
@@ -301,7 +302,8 @@ object ManiaHelper : Module(
         if (batch.isEmpty()) return
         val s = session
         if (s != null) {
-            for (update in batch) surfaceCache.invalidate(s, update.x, update.z)
+            val level = sessionLevel
+            for (update in batch) surfaceCache.update(s, level, update.x, update.y, update.z)
             s.processBatch(tick, batch, synthetic)
         }
         batch.clear()
@@ -540,8 +542,8 @@ object ManiaHelper : Module(
         }
     }
 
-    /** [edges] holds the surface height along each side of the block, see [edgeHeights]. */
-    private class Surface(val type: ManiaBlock, val tints: List<AABB>, val edges: DoubleArray)
+    /** The top of the block at [y]; [edges] holds the surface height along each side of it, see [edgeHeights]. */
+    private class Surface(var type: ManiaBlock, val y: Int, val tints: List<AABB>, val edges: DoubleArray)
 
     /**
      * Height of the block's top just inside each of its four sides, two samples per side (one per half, which is as
@@ -575,6 +577,8 @@ object ManiaHelper : Module(
     private class SurfaceCache {
         private val valid = BooleanArray(ManiaGeometry.offsetCount)
         val surfaces = Array(ManiaGeometry.offsetCount) { emptyList<Surface>() }
+        /** Per column, a bit per scanned block (from the bottom of the scan) that was a full cube when computed. */
+        private val fullCubes = IntArray(ManiaGeometry.offsetCount)
         private val pos = BlockPos.MutableBlockPos()
         private var owner: ManiaSession? = null
         private var version = -1
@@ -588,10 +592,29 @@ object ManiaHelper : Module(
             valid.fill(false)
         }
 
-        fun invalidate(s: ManiaSession, x: Int, z: Int) {
+        /**
+         * Brings the column up to date with a block change at ([x], [y], [z]), already applied to [level]. Mania steps
+         * swap one full cube for another, which leaves the surfaces as they were apart from the block's type, so
+         * those are updated in place; any other change has the column recomputed.
+         */
+        fun update(s: ManiaSession, level: Level?, x: Int, y: Int, z: Int) {
             if (s !== owner) return
             val i = ManiaGeometry.offsetIndex(x - s.centreX, z - s.centreZ)
-            if (i >= 0) valid[i] = false
+            if (i < 0 || !valid[i]) return
+            // Another centre resets everything at the next sync anyway.
+            if (s.centreVersion != version) return
+            val bit = y - (baseY - REACH_DOWN)
+            // compute never looks at blocks outside its scan.
+            if (bit < 0 || bit >= SCAN_HEIGHT) return
+            if (level != null && fullCubes[i] and (1 shl bit) != 0) {
+                pos.set(x, y, z)
+                val state = level.getBlockState(pos)
+                if (!state.isAir && state.getCollisionShape(level, pos) === Shapes.block()) {
+                    for (surface in surfaces[i]) if (surface.y == y) surface.type = ManiaBlock.of(state)
+                    return
+                }
+            }
+            valid[i] = false
         }
 
         fun ensure(i: Int, level: Level, x: Int, z: Int) {
@@ -605,25 +628,30 @@ object ManiaHelper : Module(
 
         private fun compute(i: Int, level: Level, x: Int, z: Int) {
             var found: ArrayList<Surface>? = null
+            var full = 0
             // Passable blocks directly above the current y; the scan starts HEADROOM above the reach so the top is checked too.
             var clearance = 0
             for (y in baseY + REACH_UP + HEADROOM downTo baseY - REACH_DOWN) {
                 pos.set(x, y, z)
                 val state = level.getBlockState(pos)
-                val shape = state.getCollisionShape(level, pos)
+                val shape = if (state.isAir) Shapes.empty() else state.getCollisionShape(level, pos)
                 if (shape.isEmpty) {
                     clearance++
                     continue
                 }
+                val fullCube = shape === Shapes.block()
+                if (fullCube) full = full or (1 shl (y - (baseY - REACH_DOWN)))
                 if (clearance >= HEADROOM && y <= baseY + REACH_UP) {
-                    val boxes = shape.toAabbs()
-                    val top = y + shape.max(Direction.Axis.Y)
+                    // A full cube is one unit box, so skip building its box list and edge samples
+                    val boxes = if (fullCube) UNIT_BOX else shape.toAabbs()
+                    val top = y + if (fullCube) 1.0 else shape.max(Direction.Axis.Y)
                     (found ?: ArrayList<Surface>(2).also { found = it }) +=
-                        Surface(ManiaBlock.of(state), tintBoxes(boxes, x, y, z), edgeHeights(boxes, y, top))
+                        Surface(ManiaBlock.of(state), y, tintBoxes(boxes, x, y, z), edgeHeights(boxes, y, top))
                 }
                 clearance = 0
             }
             surfaces[i] = found ?: emptyList()
+            fullCubes[i] = full
             valid[i] = true
         }
 
@@ -632,6 +660,9 @@ object ManiaHelper : Module(
             const val REACH_UP = 10
             const val REACH_DOWN = 10
             const val HEADROOM = 2
+            /** Blocks [compute] scans per column, from REACH_DOWN below the boss to HEADROOM above the reach. */
+            const val SCAN_HEIGHT = REACH_DOWN + REACH_UP + HEADROOM + 1
+            val UNIT_BOX = listOf(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0))
         }
     }
 
