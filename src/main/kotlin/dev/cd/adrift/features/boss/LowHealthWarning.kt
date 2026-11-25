@@ -91,7 +91,7 @@ object LowHealthWarning : Module(
         SlayerUtils.boss != null || SlayerUtils.lootshareBoss != null
 
     private fun extractOverlay(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!vignette() || !inBossFight()) return
+        if (!enabled || !vignette() || !inBossFight()) return
 
         val player = mc.player ?: return
         if (player.health >= HP_THRESHOLD) return
