@@ -93,12 +93,15 @@ object SpectralLanding : Module(
             if (type != EntityTypes.ARMOR_STAND) return@onReceive
             //?} else
             //if (type != EntityType.ARMOR_STAND) return@onReceive
+            if (!Location.inRift) return@onReceive
             val id = id
             val spawn = Vec3(x, y, z)
             mc.execute { if (enabled && Location.inRift) candidates[id] = Candidate(spawn, tick) }
         }
 
         onReceive<ClientboundSetPassengersPacket> {
+            // Outside the Rift there are no candidates, and no hops unless some are still being watched
+            if (!Location.inRift && watched.isEmpty()) return@onReceive
             val vehicle = vehicle
             val passengers = passengers
             mc.execute { onPassengers(vehicle, passengers) }

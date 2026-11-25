@@ -60,10 +60,13 @@ object ResurrectAlert : Module(
     private val skulls = HashMap<Int, Int>()
     private val notSkull = HashSet<Int>()
     private var resurrectEnd = -1L
+    /** Whether there are clotgoyles or skulls to clear once we leave the Rift; read on the netty thread. */
+    @Volatile private var tracking = false
 
     init {
         on<TickEvent.Server> {
             val t = serverTick.incrementAndGet()
+            if (!Location.inRift && !tracking) return@on
             mc.execute { onServerTick(t) }
         }
         on<LevelEvent.Load> { reset() }
@@ -109,6 +112,7 @@ object ResurrectAlert : Module(
         skulls.clear()
         notSkull.clear()
         resurrectEnd = -1L
+        tracking = false
     }
 
     private fun onServerTick(t: Long) {
@@ -148,6 +152,7 @@ object ResurrectAlert : Module(
         clots.values.removeIf { it.goneTick >= 0 && t - it.goneTick > SKULL_LINK_TICKS }
         skulls.keys.removeIf { level.getEntity(it)?.isRemoved != false }
         notSkull.removeIf { level.getEntity(it)?.isRemoved != false }
+        tracking = skulls.isNotEmpty() || clots.isNotEmpty()
     }
 
     private fun updateResurrect() {

@@ -5,6 +5,7 @@ import dev.cd.adrift.events.TickEvent
 import dev.cd.adrift.features.Category
 import dev.cd.adrift.features.Module
 import dev.cd.adrift.hud.HudCanvas
+import dev.cd.adrift.utils.Location
 import dev.cd.adrift.utils.SlayerUtils
 import net.minecraft.client.resources.sounds.SimpleSoundInstance
 import net.minecraft.network.chat.Component
@@ -64,6 +65,8 @@ object Twinclaws : Module(
     private var wasTwinclaws = false
     private var pendingAlertAt = 0L
     private var alertUntil = 0L
+    /** Whether everything is as [reset] leaves it; read on the netty thread. */
+    @Volatile private var idle = true
 
     init {
         onReceive<ClientboundSoundPacket> { event ->
@@ -72,7 +75,11 @@ object Twinclaws : Module(
             event.cancel()
         }
 
-        on<TickEvent.Server> { mc.execute { onServerTick() } }
+        on<TickEvent.Server> {
+            // Nothing to follow or clear without a boss in the Rift
+            if (idle && (!Location.inRift || (SlayerUtils.boss == null && SlayerUtils.lootshareBoss == null))) return@on
+            mc.execute { onServerTick() }
+        }
         on<LevelEvent.Load> { reset() }
         for (switch in listOf(fixSound, alert)) switch.onChange { if (!enabled) reset() }
     }
@@ -80,6 +87,7 @@ object Twinclaws : Module(
     private fun onServerTick() {
         if (!enabled) return
         val boss = SlayerUtils.boss ?: SlayerUtils.lootshareBoss ?: return reset()
+        idle = false
         val name = mc.level?.getEntity(boss.id + 2)?.plainTextName
         if (name == null || !name.contains("TWINCLAWS")) {
             inTwinclaws = false
@@ -131,5 +139,6 @@ object Twinclaws : Module(
         wasTwinclaws = false
         pendingAlertAt = 0L
         alertUntil = 0L
+        idle = true
     }
 }

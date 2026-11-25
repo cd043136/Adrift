@@ -13,8 +13,8 @@ object Scheduler {
 
     fun register() {
         EventBus.on<TickEvent.End> { run(clientTasks) }
-        // Server ticks arrive on the netty thread; count there, run on the main thread
-        EventBus.on<TickEvent.Server> { mc.execute { run(serverTasks) } }
+        // Server ticks arrive on the netty thread; count there, run on the main thread (only when there's something to run)
+        EventBus.on<TickEvent.Server> { if (serverTasks.isNotEmpty()) mc.execute { run(serverTasks) } }
     }
 
     private fun run(tasks: ConcurrentLinkedQueue<Task>) {

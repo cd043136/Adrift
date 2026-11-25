@@ -37,23 +37,28 @@ object SlayerUtils {
 
     private var awaitingSpawnUntil = 0L
 
-    var boss: RemotePlayer? = null
+    // Also read on the netty thread, to skip work while there's no fight
+    @Volatile var boss: RemotePlayer? = null
     var timer: ArmorStand? = null
-    var lootshareBoss: RemotePlayer? = null
+    @Volatile var lootshareBoss: RemotePlayer? = null
 
     /** Whether our boss is in a mania phase right now. */
     var inMania = false
         private set
 
-    // Fight state, main thread only
-    private var fighting = false
+    // Fight state, main thread only (fighting and awaitingOutcome are also read on the netty thread)
+    @Volatile private var fighting = false
     private var fightTicks = 0
     private var maniaCount = 0
-    private var awaitingOutcome = false
+    @Volatile private var awaitingOutcome = false
     private var outcomeTicks = 0
 
     fun register() {
-        EventBus.on<TickEvent.Server> { mc.execute { tick() } }
+        EventBus.on<TickEvent.Server> {
+            // Nothing to follow outside the Rift once the last fight is wrapped up
+            if (!Location.inRift && boss == null && lootshareBoss == null && !fighting && !awaitingOutcome) return@on
+            mc.execute { tick() }
+        }
         EventBus.on<LevelEvent.Load> { reset() }
 
         EventBus.onReceive<ClientboundAddEntityPacket> { // new slayer armorstand shenanigans
@@ -61,6 +66,7 @@ object SlayerUtils {
             if (type != EntityTypes.PLAYER) return@onReceive
             //?} else
             //if (type != EntityType.PLAYER) return@onReceive
+            if (!Location.inRift) return@onReceive
             val id = id
             val now = System.currentTimeMillis()
             mc.execute {

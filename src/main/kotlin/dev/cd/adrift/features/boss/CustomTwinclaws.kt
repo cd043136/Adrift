@@ -155,6 +155,7 @@ object CustomTwinclaws : Module(
             if (type != EntityTypes.FALLING_BLOCK) return@onReceive
             //?} else
             //if (type != EntityType.FALLING_BLOCK) return@onReceive
+            if (!Location.inRift) return@onReceive
             val v = movement
             if (abs(v.y) > 1.0e-3) return@onReceive
             val speed = sqrt(v.x * v.x + v.z * v.z)
