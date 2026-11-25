@@ -15,6 +15,7 @@ import dev.cd.adrift.utils.modMessage
 import dev.cd.adrift.utils.render.cameraPos
 import dev.cd.adrift.utils.render.glow
 import dev.cd.adrift.utils.render.lines
+import dev.cd.adrift.utils.render.opaqueQuads
 import dev.cd.adrift.utils.render.quads
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.longs.LongArrayList
@@ -243,7 +244,7 @@ object ManiaHelper : Module(
             val dancing = ManiaDance.hasFx()
             val middleX = s.centreX + 0.5
             val middleZ = s.centreZ + 0.5
-            if (ball) quads(depth = true) { fx.disco.ball(this, middleX, s.bossY, middleZ, cameraPos) }
+            if (ball) opaqueQuads { fx.disco.ball(this, middleX, s.bossY, middleZ, cameraPos) }
             if (!light.isEmpty || curtainLit || ball || dancing) glow {
                 light.draw(this, fx, middleX, middleZ)
                 if (curtainLit) contour.curtain(this, fx, colours[ManiaBlock.GREEN.ordinal].mix(CURTAIN_TINT, 0.5))

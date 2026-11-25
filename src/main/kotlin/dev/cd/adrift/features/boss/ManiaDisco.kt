@@ -52,8 +52,12 @@ internal class ManiaDisco {
     private val px = DoubleArray(4)
     private val py = DoubleArray(4)
     private val pz = DoubleArray(4)
-    private val lats = DoubleArray(4)
-    private val lons = DoubleArray(4)
+
+    // The ball's longitude lines (and the segments' middles) this frame; they turn with it.
+    private val lonSin = DoubleArray(BALL_SEGMENTS + 1)
+    private val lonCos = DoubleArray(BALL_SEGMENTS + 1)
+    private val midLonSin = DoubleArray(BALL_SEGMENTS)
+    private val midLonCos = DoubleArray(BALL_SEGMENTS)
 
     fun begin(time: Double, sinceCoal: Double) {
         this.time = time
@@ -168,24 +172,27 @@ internal class ManiaDisco {
 
     /**
      * The mirror ball, hanging [BALL_HEIGHT] above the floor at ([centreX], [floorY], [centreZ]): facets on a dark
-     * core, a few catching the light each moment. Only facets facing [camera] are drawn, so the batch's sorting
-     * never has to untangle front from back.
+     * core, a few catching the light each moment. Opaque, for an opaque batch; only facets facing [camera] are drawn.
      */
     fun ball(batch: GeometryBatch, centreX: Double, floorY: Double, centreZ: Double, camera: Vec3) {
         val cy = floorY + BALL_HEIGHT
         val turn = time * BALL_SPIN
         val sparkleSlot = floor(time * 10).toInt()
+        for (lo in 0..BALL_SEGMENTS) {
+            val lon = TAU * lo / BALL_SEGMENTS + turn
+            lonSin[lo] = sin(lon)
+            lonCos[lo] = cos(lon)
+        }
+        for (lo in 0 until BALL_SEGMENTS) {
+            val lonMid = (TAU * lo / BALL_SEGMENTS + turn + (TAU * (lo + 1) / BALL_SEGMENTS + turn)) / 2
+            midLonSin[lo] = sin(lonMid)
+            midLonCos[lo] = cos(lonMid)
+        }
         for (la in 0 until BALL_BANDS) {
-            val lat0 = -Math.PI / 2 + Math.PI * la / BALL_BANDS
-            val lat1 = -Math.PI / 2 + Math.PI * (la + 1) / BALL_BANDS
-            val latMid = (lat0 + lat1) / 2
             for (lo in 0 until BALL_SEGMENTS) {
-                val lon0 = TAU * lo / BALL_SEGMENTS + turn
-                val lon1 = TAU * (lo + 1) / BALL_SEGMENTS + turn
-                val lonMid = (lon0 + lon1) / 2
-                val nx = cos(latMid) * sin(lonMid)
-                val ny = sin(latMid)
-                val nz = cos(latMid) * cos(lonMid)
+                val nx = MID_LAT_COS[la] * midLonSin[lo]
+                val ny = MID_LAT_SIN[la]
+                val nz = MID_LAT_COS[la] * midLonCos[lo]
                 if ((camera.x - centreX) * nx + (camera.y - cy) * ny + (camera.z - centreZ) * nz < 0) continue
 
                 val light = 0.4 + 0.5 * (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z).coerceAtLeast(0.0)
@@ -193,8 +200,8 @@ internal class ManiaDisco {
                 if (hash(la, lo, bar + 900) < 0.22) colour = colour.mix(PALETTE[(la + lo + bar) % PALETTE.size], 0.55)
                 if (hash(la, lo, sparkleSlot) > 0.93) colour = Colors.WHITE
 
-                facet(batch, centreX, cy, centreZ, BALL_RADIUS * 0.995, lat0, lat1, lon0, lon1, 1.0, GROUT)
-                facet(batch, centreX, cy, centreZ, BALL_RADIUS, lat0, lat1, lon0, lon1, FACET_FILL, colour)
+                facet(batch, centreX, cy, centreZ, BALL_RADIUS * 0.995, la, lo, 1.0, GROUT)
+                facet(batch, centreX, cy, centreZ, BALL_RADIUS, la, lo, FACET_FILL, colour)
             }
         }
     }
@@ -251,26 +258,23 @@ internal class ManiaDisco {
         }
     }
 
-    /** One facet of the ball at [radius], shrunk to [fill] of its size about its middle. */
+    /**
+     * Facet ([la], [lo]) of the ball at [radius], shrunk to [fill] of its size about its middle. Corners go
+     * (lat0, lon0), (lat0, lon1), (lat1, lon1), (lat1, lon0).
+     */
     private fun facet(
         batch: GeometryBatch, cx: Double, cy: Double, cz: Double, radius: Double,
-        lat0: Double, lat1: Double, lon0: Double, lon1: Double, fill: Double, colour: Color,
+        la: Int, lo: Int, fill: Double, colour: Color,
     ) {
-        lats[0] = lat0
-        lats[1] = lat0
-        lats[2] = lat1
-        lats[3] = lat1
-        lons[0] = lon0
-        lons[1] = lon1
-        lons[2] = lon1
-        lons[3] = lon0
         var mx = 0.0
         var my = 0.0
         var mz = 0.0
         for (k in 0 until 4) {
-            px[k] = radius * cos(lats[k]) * sin(lons[k])
-            py[k] = radius * sin(lats[k])
-            pz[k] = radius * cos(lats[k]) * cos(lons[k])
+            val lat = if (k < 2) la else la + 1
+            val lon = if (k == 1 || k == 2) lo + 1 else lo
+            px[k] = radius * LAT_COS[lat] * lonSin[lon]
+            py[k] = radius * LAT_SIN[lat]
+            pz[k] = radius * LAT_COS[lat] * lonCos[lon]
             mx += px[k] / 4
             my += py[k] / 4
             mz += pz[k] / 4
@@ -316,6 +320,11 @@ internal class ManiaDisco {
         private const val BALL_BANDS = 10
         private const val BALL_SEGMENTS = 20
         private const val FACET_FILL = 0.86
+        // The ball's latitude lines and the bands' middles never change.
+        private val LAT_SIN = DoubleArray(BALL_BANDS + 1) { sin(latitude(it)) }
+        private val LAT_COS = DoubleArray(BALL_BANDS + 1) { cos(latitude(it)) }
+        private val MID_LAT_SIN = DoubleArray(BALL_BANDS) { sin((latitude(it) + latitude(it + 1)) / 2) }
+        private val MID_LAT_COS = DoubleArray(BALL_BANDS) { cos((latitude(it) + latitude(it + 1)) / 2) }
         private const val CHAIN_LENGTH = 3.0
         // Light on the ball comes from above and a little to the side.
         private const val LIGHT_X = 0.28
@@ -328,6 +337,8 @@ internal class ManiaDisco {
         private const val BEAM_END_WIDTH = 1.1
         private const val BEAM_START_GLOW = 0.35
         private const val BEAM_END_GLOW = 0.06
+
+        private fun latitude(band: Int) = -Math.PI / 2 + Math.PI * band / BALL_BANDS
 
         /** Party colours, with no green so green still only means safe. */
         private val PALETTE = arrayOf(
