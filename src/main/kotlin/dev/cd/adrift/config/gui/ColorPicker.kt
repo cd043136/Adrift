@@ -250,7 +250,8 @@ class ColorPicker(
             on<FocusEvent.Lose> { editing = false; textInput(box, false); hex = format(); paintField() }
             on<KeyEvent.Type> {
                 val c = char.uppercaseChar()
-                if ((c !in '0'..'9' && c !in 'A'..'F' && c != '#') || hex.length >= MAX_HEX) return@on
+                // '#' only as the first character, so the digits typed() parses stay hex
+                if ((c !in '0'..'9' && c !in 'A'..'F' && (c != '#' || hex.isNotEmpty())) || hex.length >= MAX_HEX) return@on
                 hex += c
                 typed()
                 cancel()
@@ -288,13 +289,15 @@ class ColorPicker(
     private fun typed() {
         var digits = hex.removePrefix("#")
         if (digits.length == 3 || digits.length == 4) digits = digits.map { "$it$it" }.joinToString("")
-        if (digits.length == 6 || digits.length == 8) {
-            val (h, s, v) = Palette.hsv(digits.take(6).toInt(16))
+        val rgb = if (digits.length == 6 || digits.length == 8) digits.take(6).toIntOrNull(16) else null
+        val alphaDigits = if (digits.length == 8) digits.substring(6).toIntOrNull(16) else null
+        if (rgb != null && (digits.length == 6 || alphaDigits != null)) {
+            val (h, s, v) = Palette.hsv(rgb)
             // Greys have no hue, so keep the one the square is showing
             if (s > 0f) hue = h
             saturation = s
             value = v
-            if (digits.length == 8 && hasAlpha) alpha = digits.substring(6).toInt(16) / 255f
+            if (alphaDigits != null && hasAlpha) alpha = alphaDigits / 255f
             changed()
         }
         paintField()
