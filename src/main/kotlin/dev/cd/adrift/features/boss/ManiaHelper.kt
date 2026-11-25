@@ -1,5 +1,6 @@
 package dev.cd.adrift.features.boss
 
+import dev.cd.adrift.Adrift
 import dev.cd.adrift.events.LevelEvent
 import dev.cd.adrift.features.boss.ManiaFx.Companion.smoothstep
 import dev.cd.adrift.events.RenderWorldEvent
@@ -15,6 +16,8 @@ import dev.cd.adrift.utils.render.cameraPos
 import dev.cd.adrift.utils.render.glow
 import dev.cd.adrift.utils.render.lines
 import dev.cd.adrift.utils.render.quads
+import it.unimi.dsi.fastutil.ints.IntArrayList
+import it.unimi.dsi.fastutil.longs.LongArrayList
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -31,8 +34,12 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.ceil
 
@@ -45,6 +52,12 @@ object ManiaHelper : Module(
     private const val MAX_PLAYER_DISTANCE_SQ = 20.0 * 20.0
     private const val SCAN_DELAY_TICKS = 40
     private const val MAX_LOGGED_SESSIONS = 100
+    /** Roughly 50 MB of debug log; older sessions are dropped beyond it. */
+    private const val MAX_LOG_CHARS = 50L * 1024 * 1024
+    /** Debug log lines are handed to the log thread in chunks of about this many chars. */
+    private const val DEBUG_CHUNK_CHARS = 64 * 1024
+    /** Chunks waiting for the log thread before further output is dropped. */
+    private const val DEBUG_QUEUE_SIZE = 256
     private const val TEXT_HEIGHT = 9
     private const val LOCKED_SCAN_RADIUS = ManiaGeometry.FOREIGN_RADIUS + ManiaGeometry.FOREIGN_MARGIN
     private const val LOCKED_SCAN_RADIUS_SQ = LOCKED_SCAN_RADIUS * LOCKED_SCAN_RADIUS
@@ -81,6 +94,10 @@ object ManiaHelper : Module(
     private val terracottaColour by color("Red Terracotta Colour", Color("b4503c80"), "Red terracotta ring colour.")
     private val redstoneColour by color("Redstone Colour", Color("ff202080"), "Redstone ring colour.")
     private val coalColour by color("Coal Colour", Color("1a1a1a99"), "Coal colour.")
+    private val debugLog by bool(
+        "Debug Log", false,
+        "Writes mania detection diagnostics to config/adrift/mania_debug.log, for reporting detection problems.",
+    )
 
     init {
         hud("Status HUD", "Shows safe / move in / move out and the time until coal during your mania.", 0.5f, 0.6f, title = "Mania Status") { preview ->
@@ -117,22 +134,31 @@ object ManiaHelper : Module(
     private var sessionNanos = 0L
     /** Disco beat the breakdance starts on, the first one after the mania began. */
     private var danceStartBeat = 0.0
+
+    // Debug log, off unless [debugLog] is on. Lines are buffered on the main thread and handed in chunks to one
+    // background thread, which owns the file; the main thread never touches the disk.
+    private val debugIo = ThreadPoolExecutor(
+        1, 1, 30L, TimeUnit.SECONDS, ArrayBlockingQueue<Runnable>(DEBUG_QUEUE_SIZE),
+        { task -> Thread(task, "Adrift Mania Log").apply { isDaemon = true } },
+        { _, _ -> Adrift.LOGGER.warn("Mania debug log is backed up, dropping output") },
+    ).apply { allowCoreThreadTimeOut(true) }
+    private val debugBuffer = StringBuilder()
+    private var debugOpen = false
+    @Volatile private var debugWriterFailed = false
+    /** Background thread only. */
     private var debugWriter: BufferedWriter? = null
-    private var debugWriterFailed = false
 
     private val log = object : ManiaLog {
-        override val enabled: Boolean get() = true
+        override val enabled: Boolean get() = debugLog && !debugWriterFailed
         override fun chat(message: String) = file("MSG $message")
         override fun file(line: String) {
-            val writer = debugWriter ?: openDebugLog() ?: return
-            try {
-                writer.write(line)
-                writer.newLine()
-            } catch (e: IOException) {
-                closeDebugLog()
-                debugWriterFailed = true
-                modMessage("Mania debug log write failed: ${e.message}")
+            if (!enabled) return
+            if (!debugOpen) {
+                debugOpen = true
+                debugIo.execute(::openDebugLog)
             }
+            debugBuffer.append(line).append(System.lineSeparator())
+            if (debugBuffer.length >= DEBUG_CHUNK_CHARS) flushDebugBuffer(toDisk = false)
         }
     }
 
@@ -250,7 +276,7 @@ object ManiaHelper : Module(
         val s = session ?: return
         s.tick(tick)
         runWorldScan(s, tick)
-        if (session === s) logTick(s, tick)
+        if (session === s && log.enabled) logTick(s, tick)
     }
 
     /** Batches are everything that arrived before this tick's ping, grouped by the tick they arrived in. */
@@ -313,7 +339,7 @@ object ManiaHelper : Module(
         sessionNanos = System.nanoTime()
         danceStartBeat = ceil(discoBeat(sessionNanos))
         debugWriterFailed = false
-        log.file("START tick=${s.startTick} Mania started, guess (${s.guessX}, ${s.guessZ}), boss y %.2f".format(s.bossY))
+        if (log.enabled) log.file("START tick=${s.startTick} Mania started, guess (${s.guessX}, ${s.guessZ}), boss y %.2f".format(s.bossY))
     }
 
     private fun endSession(reason: String) {
@@ -415,39 +441,96 @@ object ManiaHelper : Module(
         val playerPos = player?.let { "%.3f %.3f %.3f %.1f".format(it.x, it.y, it.z, it.health) } ?: "- - - -"
         log.file("T $tick boss $bossPos player $playerPos ${s.phase} ring=${s.greenRing} mania=${s.maniaRemaining}")
         if (tick % 20 != 0L) return
-        try {
-            debugWriter?.flush()
-        } catch (ignored: IOException) {
-            closeDebugLog()
+        flushDebugBuffer(toDisk = true)
+    }
+
+    /** Hands the buffered lines to the log thread, which also flushes the file with [toDisk]. */
+    private fun flushDebugBuffer(toDisk: Boolean) {
+        if (!debugOpen || (debugBuffer.isEmpty() && !toDisk)) return
+        val chunk = debugBuffer.toString()
+        debugBuffer.setLength(0)
+        debugIo.execute {
+            val writer = debugWriter ?: return@execute
+            try {
+                writer.write(chunk)
+                if (toDisk) writer.flush()
+            } catch (e: IOException) {
+                debugLogFailed("write failed", e)
+            }
         }
     }
 
-    private fun openDebugLog(): BufferedWriter? {
-        if (debugWriterFailed) return null
-        return try {
+    /** Log thread only. */
+    private fun openDebugLog() {
+        closeDebugWriter()
+        if (debugWriterFailed) return
+        try {
             val path = FabricLoader.getInstance().configDir.resolve("adrift").resolve("mania_debug.log")
             Files.createDirectories(path.parent)
             trimDebugLog(path)
-            Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-                .also { debugWriter = it }
+            debugWriter = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
         } catch (e: IOException) {
-            debugWriterFailed = true
-            modMessage("Mania debug log unavailable: ${e.message}")
-            null
+            debugLogFailed("unavailable", e)
         }
     }
 
-    /** Drops the oldest sessions so that, with the one about to start, at most [MAX_LOGGED_SESSIONS] remain. */
+    /** Log thread only. */
+    private fun debugLogFailed(what: String, e: IOException) {
+        closeDebugWriter()
+        if (debugWriterFailed) return
+        debugWriterFailed = true
+        mc.execute { modMessage("Mania debug log $what: ${e.message}") }
+    }
+
+    /**
+     * Drops the oldest sessions so that, with the one about to start, at most [MAX_LOGGED_SESSIONS] remain and the
+     * file stays under about [MAX_LOG_CHARS]. Streams the file rather than loading it. Log thread only.
+     */
     private fun trimDebugLog(path: Path) {
         if (!Files.exists(path)) return
-        val lines = Files.readAllLines(path, StandardCharsets.UTF_8)
-        val starts = lines.indices.filter { lines[it].startsWith("START ") }
-        val excess = starts.size - (MAX_LOGGED_SESSIONS - 1)
-        if (excess <= 0) return
-        Files.write(path, lines.subList(starts[excess], lines.size), StandardCharsets.UTF_8)
+        val startLines = IntArrayList()
+        val startChars = LongArrayList()
+        var lines = 0
+        var chars = 0L
+        Files.newBufferedReader(path, StandardCharsets.UTF_8).use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.startsWith("START ")) {
+                    startLines.add(lines)
+                    startChars.add(chars)
+                }
+                lines++
+                chars += line.length + 1
+            }
+        }
+        var first = maxOf(0, startLines.size - (MAX_LOGGED_SESSIONS - 1))
+        while (first < startLines.size && chars - startChars.getLong(first) > MAX_LOG_CHARS) first++
+        if (first == 0) return
+        val cut = if (first < startLines.size) startLines.getInt(first) else lines
+        val tmp = path.resolveSibling("${path.fileName}.tmp")
+        Files.newBufferedReader(path, StandardCharsets.UTF_8).use { reader ->
+            Files.newBufferedWriter(tmp, StandardCharsets.UTF_8).use { writer ->
+                var n = 0
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (n++ < cut) continue
+                    writer.write(line)
+                    writer.newLine()
+                }
+            }
+        }
+        Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING)
     }
 
     private fun closeDebugLog() {
+        if (!debugOpen) return
+        flushDebugBuffer(toDisk = false)
+        debugOpen = false
+        debugIo.execute(::closeDebugWriter)
+    }
+
+    /** Log thread only. */
+    private fun closeDebugWriter() {
         val writer = debugWriter ?: return
         debugWriter = null
         try {
