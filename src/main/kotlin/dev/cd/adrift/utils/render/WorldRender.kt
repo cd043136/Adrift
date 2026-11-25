@@ -23,7 +23,7 @@ enum class BoxStyle { FILLED, OUTLINE, FILLED_OUTLINE }
  * frame's shapes into one batch instead of one submission per shape keeps big patterns (Mania Helper draws
  * hundreds of boxes) cheap. Coordinates are absolute; the camera offset is applied while recording.
  */
-class GeometryBatch internal constructor(private val lines: Boolean) {
+class GeometryBatch internal constructor(internal val lines: Boolean) {
     private var data = FloatArray(256)
     private var colors = IntArray(64)
     private var count = 0
@@ -89,8 +89,12 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
     }
 
     fun box(aabb: AABB, color: Color) {
-        val (x0, y0, z0) = Triple(aabb.minX, aabb.minY, aabb.minZ)
-        val (x1, y1, z1) = Triple(aabb.maxX, aabb.maxY, aabb.maxZ)
+        val x0 = aabb.minX
+        val y0 = aabb.minY
+        val z0 = aabb.minZ
+        val x1 = aabb.maxX
+        val y1 = aabb.maxY
+        val z1 = aabb.maxZ
         quad(color, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1) // bottom
         quad(color, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0) // top
         quad(color, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0) // north
@@ -147,12 +151,27 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
     }
 
     fun boxEdges(aabb: AABB, color: Color, width: Float) {
-        val xs = doubleArrayOf(aabb.minX, aabb.maxX)
-        val ys = doubleArrayOf(aabb.minY, aabb.maxY)
-        val zs = doubleArrayOf(aabb.minZ, aabb.maxZ)
-        for (y in ys) for (z in zs) line(xs[0], y, z, xs[1], y, z, color, width)
-        for (x in xs) for (z in zs) line(x, ys[0], z, x, ys[1], z, color, width)
-        for (x in xs) for (y in ys) line(x, y, zs[0], x, y, zs[1], color, width)
+        val x0 = aabb.minX
+        val y0 = aabb.minY
+        val z0 = aabb.minZ
+        val x1 = aabb.maxX
+        val y1 = aabb.maxY
+        val z1 = aabb.maxZ
+        // Along x
+        line(x0, y0, z0, x1, y0, z0, color, width)
+        line(x0, y0, z1, x1, y0, z1, color, width)
+        line(x0, y1, z0, x1, y1, z0, color, width)
+        line(x0, y1, z1, x1, y1, z1, color, width)
+        // Along y
+        line(x0, y0, z0, x0, y1, z0, color, width)
+        line(x0, y0, z1, x0, y1, z1, color, width)
+        line(x1, y0, z0, x1, y1, z0, color, width)
+        line(x1, y0, z1, x1, y1, z1, color, width)
+        // Along z
+        line(x0, y0, z0, x0, y0, z1, color, width)
+        line(x0, y1, z0, x0, y1, z1, color, width)
+        line(x1, y0, z0, x1, y0, z1, color, width)
+        line(x1, y1, z0, x1, y1, z1, color, width)
     }
 
     internal fun emit(pose: PoseStack.Pose, buffer: VertexConsumer) {
@@ -163,10 +182,15 @@ class GeometryBatch internal constructor(private val lines: Boolean) {
         }
     }
 
-    internal fun copy(): GeometryBatch = GeometryBatch(lines).also {
-        it.data = data.copyOf(count * stride)
-        it.colors = colors.copyOf(count)
-        it.count = count
+    /** Copies this batch's geometry into [target], reusing its arrays when they are big enough. */
+    internal fun copyInto(target: GeometryBatch) {
+        check(target.lines == lines)
+        val size = count * stride
+        if (target.data.size < size) target.data = FloatArray(maxOf(size, target.data.size * 2))
+        if (target.colors.size < count) target.colors = IntArray(maxOf(count, target.colors.size * 2))
+        System.arraycopy(data, 0, target.data, 0, size)
+        System.arraycopy(colors, 0, target.colors, 0, count)
+        target.count = count
     }
 }
 
@@ -181,12 +205,25 @@ internal val camera: Camera
 
 internal val cameraPos: Vec3 get() = camera.position()
 
+//? if >=26.2 {
+/** Copies handed to submissions, back here once drawn, so a busy frame doesn't allocate its geometry afresh. */
+private val frozenQuads = ArrayDeque<GeometryBatch>()
+private val frozenLines = ArrayDeque<GeometryBatch>()
+private const val MAX_FROZEN = 16
+//?}
+
 private fun RenderWorldEvent.submit(type: RenderType, batch: GeometryBatch) {
     if (batch.isEmpty) return
     //? if >=26.2 {
-    // Submissions are drawn later in the frame, so hand over a copy rather than the reused scratch batch
-    val frozen = batch.copy()
-    context.submitNodeCollector().submitCustomGeometry(context.poseStack(), type) { pose, buffer -> frozen.emit(pose, buffer) }
+    // Submissions are drawn later in the frame, so hand over a copy rather than the reused scratch batch. Each is
+    // drawn once, after which its copy can take the next submission's geometry.
+    val pool = if (batch.lines) frozenLines else frozenQuads
+    val frozen = pool.removeLastOrNull() ?: GeometryBatch(batch.lines)
+    batch.copyInto(frozen)
+    context.submitNodeCollector().submitCustomGeometry(context.poseStack(), type) { pose, buffer ->
+        frozen.emit(pose, buffer)
+        if (pool.size < MAX_FROZEN) pool.addLast(frozen)
+    }
     //?} else
     //batch.emit(context.poseStack().last(), context.bufferSource().getBuffer(type))
 }
@@ -196,6 +233,13 @@ fun RenderWorldEvent.quads(depth: Boolean, build: GeometryBatch.() -> Unit) {
     scratchQuads.begin(cameraPos)
     scratchQuads.build()
     submit(if (depth) AdriftRenderTypes.FILL else AdriftRenderTypes.FILL_ESP, scratchQuads)
+}
+
+/** Opaque quads that write depth, hidden behind blocks; alpha is ignored and nothing needs sorting. */
+fun RenderWorldEvent.opaqueQuads(build: GeometryBatch.() -> Unit) {
+    scratchQuads.begin(cameraPos)
+    scratchQuads.build()
+    submit(AdriftRenderTypes.SOLID, scratchQuads)
 }
 
 /** Additive quads, hidden behind blocks: each adds its colour, scaled by its alpha, to what's behind it. */
