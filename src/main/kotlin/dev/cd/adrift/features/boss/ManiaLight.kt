@@ -5,7 +5,8 @@ import net.minecraft.world.phys.AABB
 
 /**
  * The top faces of one frame's pattern tints, lit by [ManiaFx.light] in an additive layer just above the tint. Each
- * face is split into a grid and lit per grid corner, so light can have edges finer than a block.
+ * face is split into a grid and lit per grid corner, so light can have edges finer than a block. Faces no spot or
+ * laser reaches are lit evenly, so they are drawn as a single quad.
  */
 internal class ManiaLight {
     /** Per face: minX, maxX, minZ, maxZ, y. */
@@ -43,6 +44,11 @@ internal class ManiaLight {
             val minZ = faces[o + 2]
             val maxZ = faces[o + 3]
             val y = faces[o + 4]
+            if (!fx.lightVaries(minX - originX, maxX - originX, minZ - originZ, maxZ - originZ)) {
+                val c = fx.evenLight()
+                if (c ushr 24 != 0) batch.shadedQuad(minX, y, minZ, c, minX, y, maxZ, c, maxX, y, maxZ, c, maxX, y, minZ, c)
+                continue
+            }
             val stepX = (maxX - minX) / n
             val stepZ = (maxZ - minZ) / n
             for (j in 0..n) for (i in 0..n) {

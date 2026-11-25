@@ -123,8 +123,47 @@ internal class ManiaDisco {
                 fx.add(LASER_COLOURS[i], laserGlow * smoothstep(1.0, 3.0, along) * exp(-across * across))
             }
         }
+        evenLight(fx)
+    }
+
+    /** The light that falls on the whole floor alike, added in the same order as in [light]. */
+    fun evenLight(fx: ManiaFx) {
         if (floorWash > 0) fx.add(PALETTE[bar % PALETTE.size], floorWash)
         if (strobe > 0) fx.add(Colors.WHITE, strobe)
+    }
+
+    /**
+     * Whether a spot or laser reaches anywhere in [u0]..[u1] x [v0]..[v1]; if not, [light] there is only
+     * [evenLight]. Conservative: a laser counts out to [LASER_REACH] across, where it adds under 1e-31, far too
+     * little to change the sum it's added to.
+     */
+    fun lightVaries(u0: Double, u1: Double, v0: Double, v1: Double): Boolean {
+        val uMin = u0 - EDGE_SLACK
+        val uMax = u1 + EDGE_SLACK
+        val vMin = v0 - EDGE_SLACK
+        val vMax = v1 + EDGE_SLACK
+        for (i in 0 until SPOTS) {
+            val du = maxOf(uMin - spotU[i], 0.0, spotU[i] - uMax)
+            val dv = maxOf(vMin - spotV[i], 0.0, spotV[i] - vMax)
+            if (du * du + dv * dv <= SPOT_REACH) return true
+        }
+        if (laserGlow > 0) {
+            for (i in 0 until LASERS) {
+                val s = laserSin[i]
+                val c = laserCos[i]
+                // Both are linear, so their extremes over the rectangle are at its corners.
+                val along = maxOf(maxOf(uMin * s - vMin * c, uMax * s - vMin * c), maxOf(uMin * s - vMax * c, uMax * s - vMax * c))
+                if (along <= 1) continue
+                val a00 = uMin * c + vMin * s
+                val a10 = uMax * c + vMin * s
+                val a01 = uMin * c + vMax * s
+                val a11 = uMax * c + vMax * s
+                val nearest = minOf(minOf(a00, a10), minOf(a01, a11))
+                val farthest = maxOf(maxOf(a00, a10), maxOf(a01, a11))
+                if (nearest <= LASER_REACH && farthest >= -LASER_REACH) return true
+            }
+        }
+        return false
     }
 
     /**
@@ -262,6 +301,10 @@ internal class ManiaDisco {
         private const val LASERS = 3
         private const val LASER_WIDTH = 0.14
         private const val LASER_GLOW = 0.7
+        /** Distance across a laser beyond which it adds under exp(-72) of its glow. */
+        private const val LASER_REACH = LASER_WIDTH * 8.5
+        /** Widens [lightVaries]'s rectangle against rounding in the light grid's corner positions. */
+        private const val EDGE_SLACK = 1.0e-6
         private val LASER_COLOURS = arrayOf(Color(0xFF2DE1FF.toInt()), Color(0xFFFF2DD2.toInt()), Color(0xFFFFE08A.toInt()))
         private const val WASH_GLOW = 0.1
         private const val STROBE_TIME = 0.45

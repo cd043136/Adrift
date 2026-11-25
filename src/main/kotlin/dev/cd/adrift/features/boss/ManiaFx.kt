@@ -97,6 +97,22 @@ internal class ManiaFx {
         return packLight()
     }
 
+    /**
+     * Whether light can differ anywhere over [u0]..[u1] x [v0]..[v1]. If not, every point there gets exactly
+     * [evenLight].
+     */
+    fun lightVaries(u0: Double, u1: Double, v0: Double, v1: Double): Boolean =
+        style == ManiaStyle.DISCO && disco.lightVaries(u0, u1, v0, v1)
+
+    /** [light] where nothing local reaches (see [lightVaries]): the parts that light the whole floor alike. */
+    fun evenLight(): Int {
+        lightR = 0.0
+        lightG = 0.0
+        lightB = 0.0
+        if (style == ManiaStyle.DISCO) disco.evenLight(this)
+        return packLight()
+    }
+
     /** Notes when the session moves on to coal, for the disco strobe. */
     private fun trackCoal(session: ManiaSession) {
         val key = (session.cycleIndex shl 8) or (session.phase.ordinal shl 4) or session.greenRing
