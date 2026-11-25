@@ -5,6 +5,7 @@ package dev.cd.adrift.mixin;
 /*import dev.cd.adrift.utils.RenderDepth;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,13 +30,28 @@ public abstract class FeatureRenderDispatcherMixin {
  * Runs after opaque terrain is already in `main` depth but before any solid
  * feature (including our textured outline first pass) draws, so walls
  * occlude glow even though entities are not in the copied depth yet.
+ * Only the world pass calls renderSolidFeatures directly; the hand, GUI
+ * items and entity previews go through renderAllFeatures and are skipped.
  ¹^/
 @Mixin(FeatureRenderDispatcher.class)
 public abstract class FeatureRenderDispatcherMixin {
 
+    @Unique
+    private boolean adrift$inRenderAll;
+
+    @Inject(method = "renderAllFeatures", at = @At("HEAD"))
+    private void adrift$enterRenderAll(CallbackInfo ci) {
+        this.adrift$inRenderAll = true;
+    }
+
+    @Inject(method = "renderAllFeatures", at = @At("RETURN"))
+    private void adrift$exitRenderAll(CallbackInfo ci) {
+        this.adrift$inRenderAll = false;
+    }
+
     @Inject(method = "renderSolidFeatures", at = @At("HEAD"))
     private void adrift$seedOutlineDepth(CallbackInfo ci) {
-        RenderDepth.copySceneDepth();
+        if (!this.adrift$inRenderAll) RenderDepth.copySceneDepth();
     }
 }
 ^///?}
