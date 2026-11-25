@@ -28,6 +28,20 @@ public final class RenderDepth {
     }
 
     //? if >=26.3 {
+    private static boolean outlineDepthSubmitted;
+
+    /** Called when a depth-tested outline draw is submitted, so this frame's outline pass gets scene depth. */
+    public static void markOutlineDepthSubmitted() {
+        outlineDepthSubmitted = true;
+    }
+
+    /** Whether a depth-tested outline draw was submitted since the last call; resets it. */
+    public static boolean takeOutlineDepthSubmitted() {
+        boolean submitted = outlineDepthSubmitted;
+        outlineDepthSubmitted = false;
+        return submitted;
+    }
+
     /**
      * Main target depth if it can share a render pass with {@code target}
      * (attachments must match in size), otherwise null.
@@ -45,7 +59,7 @@ public final class RenderDepth {
      * was nothing to copy.
      ^/
     public static boolean copySceneDepth() {
-        if (!BossHighlight.hasEntityTargets()) return false;
+        if (!BossHighlight.hasCustomTargets()) return false;
         if (!RenderSystem.isOnRenderThread()) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return false;

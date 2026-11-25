@@ -82,6 +82,17 @@ object BossHighlight : Module(
         return onOtherBoss && SlayerUtils.lootshareBoss?.isAlive == true
     }
 
+    /**
+     * Whether Custom mode has a boss to draw, i.e. whether its depth-tested glow needs scene depth this frame.
+     * Outline mode uses vanilla's glow, which ignores depth, and a breakdancing boss isn't drawn at all.
+     */
+    @JvmStatic
+    fun hasCustomTargets(): Boolean {
+        if (!enabled || !isCustomMode()) return false
+        if (SlayerUtils.boss?.let { it.isAlive && !ManiaHelper.isDancing(it) } == true) return true
+        return onOtherBoss && SlayerUtils.lootshareBoss?.let { it.isAlive && !ManiaHelper.isDancing(it) } == true
+    }
+
     @JvmStatic
     fun baseColorFor(boss: Entity): Color {
         val steak = steakColouring()

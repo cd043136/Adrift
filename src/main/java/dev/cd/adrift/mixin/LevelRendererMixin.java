@@ -3,6 +3,7 @@ package dev.cd.adrift.mixin;
 //? if >=26.3 {
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import dev.cd.adrift.features.boss.BossHighlight;
 import dev.cd.adrift.utils.RenderDepth;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.spongepowered.asm.mixin.Final;
@@ -16,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * The outline pass runs after all solid and translucent geometry, so `main`
  * depth is complete by then. Vanilla outline pipelines have no depth state
  * and ignore the attachment; BossHighlight's depth-tested outline uses it so
- * walls occlude the glow.
+ * walls occlude the glow. Left off when nothing needs it.
  */
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
@@ -34,7 +35,11 @@ public abstract class LevelRendererMixin {
         index = 3
     )
     private GpuTextureView adrift$attachSceneDepth(GpuTextureView depth) {
-        return depth != null ? depth : RenderDepth.sceneDepthFor(this.entityOutlineTarget);
+        // Only BossHighlight's Custom glow reads depth. Any frame that submitted one gets it, so its
+        // depth-tested pipeline never meets a pass without depth.
+        boolean submitted = RenderDepth.takeOutlineDepthSubmitted();
+        if (depth != null || !(submitted || BossHighlight.hasCustomTargets())) return depth;
+        return RenderDepth.sceneDepthFor(this.entityOutlineTarget);
     }
 }
 //?} else {

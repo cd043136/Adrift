@@ -2,6 +2,8 @@ package dev.cd.adrift.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.cd.adrift.features.boss.BossHighlight;
+//? if >=26.3
+import dev.cd.adrift.utils.RenderDepth;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.Model;
@@ -51,7 +53,7 @@ public abstract class LivingEntityRendererMixin {
     ) {
         if (!(state instanceof AvatarRenderState avatar)) return;
         // Outline mode keeps the vanilla model; the forced outlineColor gives a vanilla glow.
-        if (!BossHighlight.isCustomMode() || !BossHighlight.hasEntityTargets()) return;
+        if (!BossHighlight.hasCustomTargets()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         Entity entity = mc.level.getEntity(avatar.id);
@@ -102,6 +104,8 @@ public abstract class LivingEntityRendererMixin {
         // textured first pass tinted toward the glow colour (any leftovers
         // blend in), flat opaque second pass via the outline buffer wrapper.
         int glow = BossHighlight.glowColorFor(entity);
+        //? if >=26.3
+        RenderDepth.markOutlineDepthSubmitted();
         submitNodeCollector.submitModel(
             rawModel,
             state,
