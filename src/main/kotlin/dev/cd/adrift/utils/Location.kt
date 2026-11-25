@@ -11,6 +11,8 @@ import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket
  */
 object Location {
     private const val AREA_PREFIX = "Area: "
+    /** Cheap test on the raw name, which can have formatting codes in it, before stripping them. */
+    private const val AREA_WORD = "Area"
     private const val RIFT = "The Rift"
 
     @Volatile
@@ -26,9 +28,12 @@ object Location {
     fun register() {
         EventBus.on<LevelEvent.Load> { area = null }
         EventBus.onReceive<ClientboundPlayerInfoUpdatePacket> {
+            // Known until the next level, which resets it
+            if (area != null) return@onReceive
             if (!actions().contains(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME)) return@onReceive
             for (entry in entries()) {
                 val name = entry.displayName()?.string ?: continue
+                if (!name.contains(AREA_WORD)) continue
                 val plain = (ChatFormatting.stripFormatting(name) ?: name).trim()
                 if (plain.startsWith(AREA_PREFIX)) area = plain.removePrefix(AREA_PREFIX).trim()
             }
